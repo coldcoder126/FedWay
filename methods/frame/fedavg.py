@@ -1,8 +1,7 @@
 # -*- codeing = utf-8 -*-
 # @Author: 13483
 # @Time: 2022/9/16 20:24
-import copy
-
+import sys
 import torch
 from tensorboardX import SummaryWriter
 import numpy as np
@@ -15,7 +14,7 @@ from methods.tool import tool
 # 实现fedavg算法
 def fedavg(args, trainset, testset, part_data):
     writer_file = f"{args.dataset}-clientNum{args.client_num}-dir{str(args.alpha).replace('.','_')}-seed{args.seed}"
-    writer = SummaryWriter(f"{args.data_path}/run_result/{writer_file}")
+    writer = SummaryWriter(f"{sys.path[0]}/{args.data_path}/run_result/{writer_file}")
     # 所有已经分好组的训练集和测试集
     train_loaders = [DataLoader(Subset(trainset, part_data.client_dict[i]), batch_size=args.batch_size, shuffle=True)
                      for i in range(args.client_num)]

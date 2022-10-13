@@ -1,7 +1,7 @@
 # -*- codeing = utf-8 -*-
 # @Author: 13483
 # @Time: 2022/9/16 19:34
-
+import sys
 import torchvision
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -15,7 +15,7 @@ def dirichlet_part(args, trainset, alpha):
     num_clients = args.client_num
     seed = args.seed
     dataset = args.dataset
-    filename = f"data/part-file/{args.dataset}-clientNum{args.client_num}-dir{str(alpha).replace('.','_')}-seed{args.seed}-partition"
+    filename = f"{sys.path[0]}data/part-file/{args.dataset}-clientNum{args.client_num}-dir{str(alpha).replace('.','_')}-seed{args.seed}-partition"
     if dataset == "cifar10":
         hetero_dir_part = CIFAR10Partitioner(trainset.targets,
                                              num_clients,
