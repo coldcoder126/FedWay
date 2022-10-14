@@ -6,7 +6,7 @@
 import torch
 import numpy as np
 
-
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # 获取每个模型的参数(一维)
 def get_flat_params_from(parameters):
     params = []
@@ -33,9 +33,39 @@ def global_test(model, test_loader):
     with torch.no_grad():
         for data in test_loader:
             inputs, target = data
+            inputs = inputs.to(device)
+            target = target.to(device)
             outputs = model(inputs)
             _, predicted = torch.max(outputs.data, dim=1)
             total += target.size(0)
             correct += (predicted == target).sum().item()
     acc = 100 * correct / total
     return acc
+
+# 对模型进行聚合
+def aggregate_avg(flat_params):
+    """Aggregate local solutions and output new global parameter
+
+    Args:
+        flat_params: a generator or (list) with element (num_sample, local_solution)
+
+    Returns:
+        flat global model parameter
+    """
+
+    averaged_solution = torch.zeros_like(flat_params[0])
+    # averaged_solution = np.zeros(self.latest_model.shape)
+
+    # 简单平均
+    num = 0
+    for local_solution in flat_params:
+        num += 1
+        averaged_solution += local_solution
+    averaged_solution /= num
+
+    # for num_sample, local_solution in flat_params:
+    #     averaged_solution += num_sample * local_solution
+    # averaged_solution /= self.all_train_data_num
+
+    # averaged_solution = from_numpy(averaged_solution, self.gpu)
+    return averaged_solution.detach()

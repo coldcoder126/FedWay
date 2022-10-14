@@ -15,13 +15,14 @@ def dirichlet_part(args, trainset, alpha):
     num_clients = args.client_num
     seed = args.seed
     dataset = args.dataset
-    filename = f"{sys.path[0]}data/part-file/{args.dataset}-clientNum{args.client_num}-dir{str(alpha).replace('.','_')}-seed{args.seed}-partition"
+    filename = f"{sys.path[0]}/data/part-file/{args.dataset}-clientNum{args.client_num}-dir{str(alpha).replace('.','_')}-seed{args.seed}-partition"
     if dataset == "cifar10":
         hetero_dir_part = CIFAR10Partitioner(trainset.targets,
                                              num_clients,
                                              balance=False,
                                              partition="dirichlet",
                                              dir_alpha=alpha,
+                                             verbose=False,
                                              seed=seed)
         save_dict(hetero_dir_part, filename)
     if dataset == "mnist":

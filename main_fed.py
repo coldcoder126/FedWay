@@ -4,7 +4,7 @@
 import argparse
 import torchvision
 import torchvision.transforms as transforms
-from methods.frame import fedavg
+from methods.frame import fedavg,fed_mutual
 from utils import split
 
 OPTIMIZERS = ['fedavg', "fed_mutual"]
@@ -54,7 +54,8 @@ def run_fed():
 
     part_data = split.dirichlet_part(args=args, trainset=train_set,alpha=alpha)
 
-    fedavg.fedavg(args, train_set, test_set, part_data)
+    # fedavg.fedavg(args, train_set, test_set, part_data)
+    fed_mutual.fed_mutual(args,train_set,test_set,part_data)
 
 
 def load_loader(args):
