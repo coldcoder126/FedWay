@@ -2,11 +2,15 @@
 # @Author: 13483
 # @Time: 2022/10/13 22:50
 # 对参数的公共操作
+import os
+import sys
 
 import torch
 import numpy as np
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
 # 获取每个模型的参数(一维)
 def get_flat_params_from(parameters):
     params = []
@@ -30,6 +34,7 @@ def set_flat_params_to(model, flat_params):
 def global_test(model, test_loader):
     correct = 0
     total = 0
+    model = model.to(device)
     with torch.no_grad():
         for data in test_loader:
             inputs, target = data
@@ -41,6 +46,7 @@ def global_test(model, test_loader):
             correct += (predicted == target).sum().item()
     acc = 100 * correct / total
     return acc
+
 
 # 对模型进行聚合
 def aggregate_avg(flat_params):
@@ -69,3 +75,10 @@ def aggregate_avg(flat_params):
 
     # averaged_solution = from_numpy(averaged_solution, self.gpu)
     return averaged_solution.detach()
+
+
+def mk_path(args):
+    path = f"{sys.path[0]}/{args.data_path}/run_result/{args.begin_time}/"
+    if not os.path.exists(path):
+        os.makedirs(path)
+    return path

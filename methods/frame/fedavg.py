@@ -13,8 +13,9 @@ from methods.tool import tool
 
 # 实现fedavg算法
 def fedavg(args, trainset, testset, part_data):
-    writer_file = f"fedavg-{args.dataset}-clientNum{args.client_num}-dir{str(args.alpha).replace('.','_')}-seed{args.seed}"
-    writer = SummaryWriter(f"{sys.path[0]}/{args.data_path}/run_result/{writer_file}")
+    path = tool.mk_path(args)
+    writer_file = f"fedavg-{args.dataset}-clientNum{args.client_num}-dir{args.alpha}-seed{args.seed}-lr{args.lr}"
+    writer = SummaryWriter(f"{path}/{writer_file}")
     # 所有已经分好组的训练集和测试集
     train_loaders = [DataLoader(Subset(trainset, part_data.client_dict[i]), batch_size=args.batch_size, shuffle=True)
                      for i in range(args.client_num)]

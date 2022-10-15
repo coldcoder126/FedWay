@@ -19,13 +19,13 @@ class LocalTrain(object):
 
     def train(self, net):
         net.train()
-        optimizer = torch.optim.SGD(net.parameters(), lr=self.args.lr, momentum=0.5)
+        optimizer = torch.optim.SGD(net.parameters(), lr=self.args.lr, weight_decay=1e-3, momentum=0.9)
         epoch_loss = []
         for epoch in range(self.epoch):
             per_epoch_loss = []
             for batch_idx, (inputs, labels) in enumerate(self.train_loader):
                 inputs, labels = inputs.to(device), labels.to(device)
-                net.zero_grad()
+                optimizer.zero_grad()
                 prediction = net(inputs)
                 loss = self.loss_func(prediction, labels)
                 per_epoch_loss.append(loss.item())
@@ -33,33 +33,34 @@ class LocalTrain(object):
                 optimizer.step()
             per_loss = sum(per_epoch_loss) / len(per_epoch_loss)
             epoch_loss.append(per_loss)
-            print(f"Update Epoch : {epoch} Loss : {per_loss}")
         return net.parameters(), sum(epoch_loss) / len(epoch_loss)
 
     # 接受两个网络互学习，model是本地模型，meme是全局模型
     def train_mul(self, net1, net2):
         model = net1
         meme = net2
-        optimizer = torch.optim.SGD(model.parameters(), lr=self.args.lr, momentum=0.5)
-        meme_optimizer = torch.optim.SGD(meme.parameters(), lr=self.args.lr, momentum=0.5)
+        optimizer = torch.optim.SGD(model.parameters(), lr=self.args.lr, weight_decay=1e-3,momentum=0.9)
+        meme_optimizer = torch.optim.SGD(meme.parameters(), lr=self.args.lr, weight_decay=1e-3,momentum=0.9)
 
         model.train();
         model = model.to(device)
         meme.train()
         meme = meme.to(device)
 
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=1)
         KL_Loss = nn.KLDivLoss(reduction='batchmean')
         Softmax = nn.Softmax(dim=1)
         LogSoftmax = nn.LogSoftmax(dim=1)
         CE_Loss = nn.CrossEntropyLoss()
-        alpha = 0.5
-        beta = 0.5
+        alpha = 0.9
+        beta = 0.9
 
         for e in range(self.epoch):
             # Training
             for batch_idx, (inputs, labels) in enumerate(self.train_loader):
                 inputs, labels = inputs.to(device), labels.to(device)
-                model.zero_grad()
+                optimizer.zero_grad()
+                meme_optimizer.zero_grad()
 
                 output_local = model(inputs)
                 output_meme = meme(inputs)
@@ -71,10 +72,9 @@ class LocalTrain(object):
 
                 loss_local = alpha * ce_local + (1 - alpha) * kl_local
                 loss_meme = beta * ce_meme + (1 - beta) * kl_meme
-                loss_local.backward()
-                loss_meme.backward()
+                loss = loss_local + loss_meme
+                loss.backward()
 
                 optimizer.step()
                 meme_optimizer.step()
-
         return model.parameters(), meme.parameters()

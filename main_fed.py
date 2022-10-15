@@ -2,9 +2,11 @@
 # @Author: 13483
 # @Time: 2022/9/8 19:35
 import argparse
+import datetime
+
 import torchvision
 import torchvision.transforms as transforms
-from methods.frame import fedavg,fed_mutual
+from methods.frame import fedavg,fed_mutual,fed_ring
 from utils import split
 
 OPTIMIZERS = ['fedavg', "fed_mutual"]
@@ -28,6 +30,7 @@ def read_options():
     parser.add_argument("--lr", help="learning rate", type=float, default=0.003)
     parser.add_argument("--seed", help="seed for randomness",type=int)
     parser.add_argument("--alpha", help="dirichlet parameter alpha", type=float, default=0.2)
+    parser.add_argument("--begin_time", help="run begin time", type=str, default=datetime.datetime.now().strftime('%Y-%m-%d-%H-%M'))
 
     try:
         parsed = parser.parse_args()
@@ -50,13 +53,11 @@ def run_fed():
     # 划分数据，如果划分过就直接从文件加载
     alpha = args.alpha
 
-    part_file_name = f"data/part-file/{args.dataset}-clientNum{args.client_num}-dir{str(alpha).replace('.','_')}-seed{args.seed}-partition"
-
     part_data = split.dirichlet_part(args=args, trainset=train_set,alpha=alpha)
 
     # fedavg.fedavg(args, train_set, test_set, part_data)
-    fed_mutual.fed_mutual(args,train_set,test_set,part_data)
-
+    # fed_mutual.fed_mutual(args,train_set,test_set,part_data)
+    fed_ring.fed_ring(args,train_set,test_set,part_data)
 
 def load_loader(args):
     path = f"{args.data_path}/{args.dataset}"

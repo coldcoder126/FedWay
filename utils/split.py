@@ -19,7 +19,7 @@ def dirichlet_part(args, trainset, alpha):
     if dataset == "cifar10":
         hetero_dir_part = CIFAR10Partitioner(trainset.targets,
                                              num_clients,
-                                             balance=False,
+                                             balance=None,
                                              partition="dirichlet",
                                              dir_alpha=alpha,
                                              verbose=False,
@@ -35,7 +35,7 @@ def dirichlet_part(args, trainset, alpha):
     if dataset == "cifar100":
         hetero_dir_part = CIFAR10Partitioner(trainset.targets,
                                              num_clients,
-                                             balance=False,
+                                             balance=None,
                                              partition="dirichlet",
                                              dir_alpha=alpha,
                                              seed=seed)
@@ -67,21 +67,21 @@ def part_show(trainset, part, num_classes):
 
 
 def split_test():
-    num_classes = 100
+    num_classes = 10
     trainset = torchvision.datasets.CIFAR10(root="D:\WorkSpace\Pycharm\data\cifar10", train=True, download=True)
     hetero_dir_part = CIFAR10Partitioner(trainset.targets,
-                                         10,
-                                         balance=False,
+                                         num_clients=50,
+                                         balance=None,
                                          partition="dirichlet",
-                                         dir_alpha=0.3,
-                                         seed=10)
+                                         dir_alpha=0.5,
+                                         seed=1)
 
-    dict_path = "D:\WorkSpace\Pycharm\FedAvg\data\part-file\dict"
+    # dict_path = "D:\WorkSpace\Pycharm\FedAvg\data\part-file\dict"
     #dict
-    dict = load_dict(dict_path)
+    # dict = load_dict(dict_path)
     # print(dict)
     # save_dict(hetero_dir_part,dict_path)
-    csv_file = "D:\WorkSpace\Pycharm\FedAvg\cifar10_hetero_dir_0.3_100clients.csv"
+    csv_file = "D:\WorkSpace\Pycharm\FedWay\cifar10_hetero_dir_0_5_50clients.csv"
     partition_report(trainset.targets, hetero_dir_part.client_dict,
                      class_num=num_classes,
                      verbose=False, file=csv_file)
@@ -95,7 +95,7 @@ def split_test():
     hetero_dir_part_df[col_names].iloc[:10].plot.barh(stacked=True)
     plt.tight_layout()
     plt.xlabel('sample num')
-    plt.savefig(f"cifar10_hetero_dir_0.3_100clients.png", dpi=400)
+    plt.savefig(f"cifar10_hetero_dir_0_5_50clients.png", dpi=400)
 
 
 if __name__ == '__main__':

@@ -1,6 +1,8 @@
 # -*- codeing = utf-8 -*-
 # @Author: 13483
 # @Time: 2022/10/14 0:08
+import copy
+import os
 import sys
 import torch
 from tensorboardX import SummaryWriter
@@ -12,8 +14,9 @@ from methods.tool import tool
 # 实现fed_mutual方法
 # 本地模型和全局模型互学习
 def fed_mutual(args, trainset, testset, part_data):
-    writer_file = f"fed_mutual-{args.dataset}-clientNum{args.client_num}-dir{str(args.alpha).replace('.', '_')}-seed{args.seed}"
-    writer = SummaryWriter(f"{sys.path[0]}/{args.data_path}/run_result/{writer_file}")
+    path = tool.mk_path(args)
+    writer_file = f"fed_mutual-{args.dataset}-clientNum{args.client_num}-dir{args.alpha}-seed{args.seed}-lr{args.lr}"
+    writer = SummaryWriter(f"{path}/{writer_file}")
     # 所有已经分好组的训练集和测试集
     train_loaders = [DataLoader(Subset(trainset, part_data.client_dict[i]), batch_size=args.batch_size, shuffle=True)
                      for i in range(args.client_num)]
@@ -34,14 +37,15 @@ def fed_mutual(args, trainset, testset, part_data):
         for k in range(args.clients_per_round):
             private_model = model
             if idx_users[k] in client_private_params.keys():
-                tool.set_flat_params_to(private_model,client_private_params[idx_users[k]])
+                print(f"client {idx_users[k]} in dict")
+                tool.set_flat_params_to(private_model, copy.deepcopy(client_private_params[idx_users[k]]))
 
             # 训练每个选到的客户端
             local = LocalTrain(args, train_loaders[idx_users[k]])
-            private_model,meme = local.train_mul(private_model,model)
+            private_param, meme_param = local.train_mul(private_model, model)
 
-            selected_params.append(tool.get_flat_params_from(meme))
-            client_private_params[idx_users[k]] = tool.get_flat_params_from(private_model)
+            selected_params.append(tool.get_flat_params_from(meme_param))
+            client_private_params[idx_users[k]] = copy.deepcopy(tool.get_flat_params_from(private_param))
 
         # 每轮训练结束后，将该轮选取的客户端模型聚合，得到最新的全局模型
         global_param = tool.aggregate_avg(selected_params)
