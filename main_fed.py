@@ -6,12 +6,12 @@ import datetime
 
 import torchvision
 import torchvision.transforms as transforms
-from methods.frame import fedavg,fed_mutual,fed_ring
+from methods.frame import fedavg, fed_mutual, fed_ring, fed_oneway, fed_mpl
 from utils import split
 
 OPTIMIZERS = ['fedavg', "fed_mutual"]
 DATASETS = ["mnist", "cifar10"]
-MODELS = ["cnn","ccnn","lenet","vgg"]
+MODELS = ["cnn", "ccnn", "lenet", "vgg"]
 
 
 def read_options():
@@ -19,19 +19,22 @@ def read_options():
     # data_path和data_set联合组成数据集的路径
     parser.add_argument("--data_path", help="data path", type=str, default="../data")
     parser.add_argument("--optimizer", help="name of optimizer", type=str, choices=OPTIMIZERS, default="fedavg")
-    parser.add_argument("--dataset", help="name of dataset", type=str, choices=DATASETS, default="mnist")
+    parser.add_argument("--dataset", help="name of dataset", type=str, choices=DATASETS, default="cifar10")
     parser.add_argument("--model", help="name of model", type=str, choices=MODELS, default="cnn")
-    parser.add_argument("--client_num", help="count of all clients ",type=int,default=50)
-    parser.add_argument("--epoch", help="epoch",type=int,default=5)
-    parser.add_argument("--class_num", help="count of all classes ",type=int)
+    parser.add_argument("--client_num", help="count of all clients ", type=int, default=50)
+    parser.add_argument("--epoch", help="epoch", type=int, default=5)
+    parser.add_argument("--class_num", help="count of all classes ", type=int)
     parser.add_argument("--clients_per_round", type=int, default=10)
     parser.add_argument("--batch_size", help="batch size", type=int, default=32)
     parser.add_argument("--round_num", help="number of rounds", type=int, default=100)
-    parser.add_argument("--lr", help="learning rate", type=float, default=0.003)
-    parser.add_argument("--seed", help="seed for randomness",type=int)
-    parser.add_argument("--alpha", help="dirichlet parameter alpha", type=float, default=0.2)
-    parser.add_argument("--begin_time", help="run begin time", type=str, default=datetime.datetime.now().strftime('%Y-%m-%d-%H-%M'))
-
+    parser.add_argument("--lr", help="learning rate", type=float, default=0.1)
+    parser.add_argument("--seed", help="seed for randomness", type=int, default=1)
+    parser.add_argument("--alpha", help="dirichlet parameter alpha", type=float, default=1)
+    parser.add_argument("--begin_time", help="run begin time", type=str,
+                        default=datetime.datetime.now().strftime('%Y-%m-%d-%H-%M'))
+    # 以下仅MPL算法需要
+    parser.add_argument('--resize', default=32, type=int, help='resize image')
+    parser.add_argument('--ratio', default=0.3, type=float, help='unlabeled data rate')
     try:
         parsed = parser.parse_args()
     except IOError as msg:
@@ -53,11 +56,14 @@ def run_fed():
     # 划分数据，如果划分过就直接从文件加载
     alpha = args.alpha
 
-    part_data = split.dirichlet_part(args=args, trainset=train_set,alpha=alpha)
+    part_data = split.dirichlet_part(args=args, trainset=train_set, alpha=alpha)
 
     # fedavg.fedavg(args, train_set, test_set, part_data)
     # fed_mutual.fed_mutual(args,train_set,test_set,part_data)
-    fed_ring.fed_ring(args,train_set,test_set,part_data)
+    # fed_ring.fed_ring(args,train_set,test_set,part_data)
+    # fed_oneway.fed_oneway(args, train_set, test_set, part_data)
+    fed_mpl.fed_mpl(args, test_set, part_data)
+
 
 def load_loader(args):
     path = f"{args.data_path}/{args.dataset}"

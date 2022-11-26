@@ -2,6 +2,7 @@
 # @Author: 13483
 # @Time: 2022/10/14 11:38
 import copy
+import math
 import sys
 import torch
 from tensorboardX import SummaryWriter
@@ -31,9 +32,12 @@ def fed_ring(args, trainset, testset, part_data):
     client_private_model = {}
     client_private_params_temp = {}
     for item in range(args.round_num):
-        print(f"---Round:{item}---")
+        # 每过10轮学习率变为之前的0.1倍
+        factor = 10 ** math.floor(item / 10)
+        lr = args.lr / factor
+        print(f"---Round:{item},lr={lr} ---")
 
-        # 每轮随机选择所有客户端
+        # 每轮选择所有客户端
         first_round_params = {}
         for k in range(args.client_num):
             if k % 5 == 0:
@@ -41,12 +45,13 @@ def fed_ring(args, trainset, testset, part_data):
 
             # 如果是第一轮，所有客户端只训练一个自己的模型
             if item == 0:
-                local = LocalTrain(args, train_loaders[k])
-                param, loss = local.train(model)
+                init_model = copy.deepcopy(model)
+                local = LocalTrain(args, train_loaders[k], lr)
+                param, loss = local.train(init_model)
                 first_round_params[k] = tool.get_flat_params_from(param)
             # 如果不是第一轮，每次取相邻两个的模型互相学习
             else:
-                local = LocalTrain(args, train_loaders[k])
+                local = LocalTrain(args, train_loaders[k], lr)
                 m1 = copy.deepcopy(client_private_model[k][0])
                 m2 = copy.deepcopy(client_private_model[k][1])
                 pre, nex = local.train_mul(m1, m2)

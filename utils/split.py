@@ -1,7 +1,10 @@
 # -*- codeing = utf-8 -*-
 # @Author: 13483
 # @Time: 2022/9/16 19:34
+import math
 import sys
+
+import numpy as np
 import torchvision
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -73,7 +76,7 @@ def split_test():
                                          num_clients=50,
                                          balance=None,
                                          partition="dirichlet",
-                                         dir_alpha=0.5,
+                                         dir_alpha=3,
                                          seed=1)
 
     # dict_path = "D:\WorkSpace\Pycharm\FedAvg\data\part-file\dict"
@@ -81,7 +84,7 @@ def split_test():
     # dict = load_dict(dict_path)
     # print(dict)
     # save_dict(hetero_dir_part,dict_path)
-    csv_file = "D:\WorkSpace\Pycharm\FedWay\cifar10_hetero_dir_0_5_50clients.csv"
+    csv_file = "D:\WorkSpace\Pycharm\FedWay\cifar10_hetero_dir_3_50clients.csv"
     partition_report(trainset.targets, hetero_dir_part.client_dict,
                      class_num=num_classes,
                      verbose=False, file=csv_file)
@@ -95,8 +98,16 @@ def split_test():
     hetero_dir_part_df[col_names].iloc[:10].plot.barh(stacked=True)
     plt.tight_layout()
     plt.xlabel('sample num')
-    plt.savefig(f"cifar10_hetero_dir_0_5_50clients.png", dpi=400)
+    plt.savefig(f"cifar10_hetero_dir_3_50clients.png", dpi=400)
 
 
 if __name__ == '__main__':
-    split_test()
+    x = np.array(range(20))
+    print(x.shape[0])
+    # np.random.seed(1)
+    # y = np.random.choice(x, 7, replace=False)
+    # z = np.setdiff1d(x, y, assume_unique=True)
+    # print(x)
+    # print(y)
+    # print(z)
+

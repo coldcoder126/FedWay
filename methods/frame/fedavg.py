@@ -1,6 +1,8 @@
 # -*- codeing = utf-8 -*-
 # @Author: 13483
 # @Time: 2022/9/16 20:24
+import copy
+import math
 import sys
 import torch
 from tensorboardX import SummaryWriter
@@ -25,15 +27,19 @@ def fedavg(args, trainset, testset, part_data):
     options['model']=args.model
     model = md.choose_model(options)
     for item in range(args.round_num):
-        print(f"---Round:{item}---")
+        # 每过10轮学习率变为之前的0.1倍
+        factor = 10 ** math.floor(item / 10)
+        lr = args.lr / factor
+        print(f"---Round:{item},lr={lr} ---")
 
         # 每轮随机选择部分客户端
         idx_users = np.random.choice(range(args.client_num), args.clients_per_round, replace=False)
         selected_params = []
         for k in range(args.clients_per_round):
             # 训练每个选到的客户端
-            local = LocalTrain(args, train_loaders[idx_users[k]])
-            param, loss = local.train(model)
+            local = LocalTrain(args, train_loaders[idx_users[k]],lr)
+            global_model = copy.deepcopy(model)
+            param, loss = local.train(global_model)
             selected_params.append(tool.get_flat_params_from(param))
             print(f"Client:{idx_users[k]} Loss:{loss}")
 
