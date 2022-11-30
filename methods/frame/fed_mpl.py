@@ -47,7 +47,7 @@ def fed_mpl(args,testset, part_data):
                 private_model = client_private_models[idx_users[k]]
 
             local = LocalMPL(args, l_loader, u_loader, lr)
-            local.train_MPL(teacher_model, private_model)
+            local.train_MPL(teacher_model, private_model,item)
 
             x = teacher_model.parameters()
             selected_params.append(tool.get_flat_params_from(x))

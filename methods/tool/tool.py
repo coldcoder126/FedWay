@@ -2,11 +2,13 @@
 # @Author: 13483
 # @Time: 2022/10/13 22:50
 # 对参数的公共操作
+import math
 import os
 import sys
 
 import torch
 import numpy as np
+from torch.optim.lr_scheduler import LambdaLR
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -76,6 +78,24 @@ def aggregate_avg(flat_params):
     # averaged_solution = from_numpy(averaged_solution, self.gpu)
     return averaged_solution.detach()
 
+def get_cosine_schedule_with_warmup(optimizer,
+                                    num_warmup_steps,
+                                    num_training_steps,
+                                    num_wait_steps=0,
+                                    num_cycles=0.5,
+                                    last_epoch=-1):
+    def lr_lambda(current_step):
+        if current_step < num_wait_steps:
+            return 0.0
+
+        if current_step < num_warmup_steps + num_wait_steps:
+            return float(current_step) / float(max(1, num_warmup_steps + num_wait_steps))
+
+        progress = float(current_step - num_warmup_steps - num_wait_steps) / \
+            float(max(1, num_training_steps - num_warmup_steps - num_wait_steps))
+        return max(0.0, 0.5 * (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress)))
+
+    return LambdaLR(optimizer, lr_lambda, last_epoch)
 
 def mk_path(args):
     path = f"{sys.path[0]}/{args.data_path}/run_result/{args.begin_time}/"

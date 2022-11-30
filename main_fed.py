@@ -27,7 +27,7 @@ def read_options():
     parser.add_argument("--clients_per_round", type=int, default=10)
     parser.add_argument("--batch_size", help="batch size", type=int, default=32)
     parser.add_argument("--round_num", help="number of rounds", type=int, default=100)
-    parser.add_argument("--lr", help="learning rate", type=float, default=0.1)
+    parser.add_argument("--lr", help="learning rate", type=float, default=0.04)
     parser.add_argument("--seed", help="seed for randomness", type=int, default=1)
     parser.add_argument("--alpha", help="dirichlet parameter alpha", type=float, default=1)
     parser.add_argument("--begin_time", help="run begin time", type=str,

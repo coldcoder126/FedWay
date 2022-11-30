@@ -92,10 +92,7 @@ def get_train_set(args):
     # 如果是有标签数据集
     transform_labeled = transforms.Compose([
         transforms.RandomHorizontalFlip(),  # 旋转和翻转
-        transforms.RandomCrop(size=args.resize,  # 从图片中随机裁剪出尺寸为 size 的图片
-                              padding=int(args.resize * 0.125),
-                              fill=128,
-                              padding_mode='constant'),
+        transforms.GaussianBlur(15, 10),
         transforms.ToTensor(),
         transforms.Normalize(mean=cifar10_mean, std=cifar10_std),
     ])
@@ -146,16 +143,10 @@ class TransformMPL(object):
         n,m = 2,10
         self.ori = transforms.Compose([
             transforms.RandomHorizontalFlip(),
-            transforms.RandomCrop(size=resize,
-                                  padding=int(resize * 0.125),
-                                  fill=128,
-                                  padding_mode='constant')])
+            transforms.GaussianBlur(15, 10)])
         self.aug = transforms.Compose([
             transforms.RandomHorizontalFlip(),
-            transforms.RandomCrop(size=resize,
-                                  padding=int(resize * 0.125),
-                                  fill=128,
-                                  padding_mode='constant'),
+            transforms.GaussianBlur(15, 10),
             RandAugmentCIFAR(n=n, m=m)])
         self.normalize = transforms.Compose([
             transforms.ToTensor(),
