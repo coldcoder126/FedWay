@@ -84,6 +84,64 @@ class LocalTrain(object):
                 meme_optimizer.step()
         return model.parameters(), meme.parameters()
 
+class LocalMutualAug(object):
+    def __init__(self, args, train_loader, train_loader_aug, lr):
+        self.args = args
+        self.loss_func = nn.CrossEntropyLoss()
+        self.train_loader = train_loader
+        self.train_loader_aug = train_loader_aug
+        self.epoch = args.epoch
+        self.lr = lr
+# 接受两个网络互学习，model是本地模型，meme是全局模型
+    def train_mul(self, net1, net2):
+        model = net1
+        meme = net2
+        optimizer = torch.optim.SGD(model.parameters(), lr=self.lr, weight_decay=1e-3, momentum=0.9)
+        meme_optimizer = torch.optim.SGD(meme.parameters(), lr=self.lr, weight_decay=1e-3, momentum=0.9)
+
+        model.train()
+        model = model.to(device)
+        meme.train()
+        meme = meme.to(device)
+
+        KL_Loss = nn.KLDivLoss(reduction='batchmean')
+        Softmax = nn.Softmax(dim=1)
+        LogSoftmax = nn.LogSoftmax(dim=1)
+        CE_Loss = nn.CrossEntropyLoss()
+        alpha = 0.9
+        beta = 0.9
+
+        for e in range(self.epoch):
+            # Training
+            for idx , (data, aug_data) in enumerate(zip(self.train_loader,self.train_loader_aug)):
+                print("a")
+                inputs,labels = data[0],data[1]
+                inputs_aug, labels_aug = aug_data[0], aug_data[1]
+                inputs, labels = inputs.to(device), labels.to(device)
+                inputs_aug = inputs_aug.to(device)
+                optimizer.zero_grad()
+                meme_optimizer.zero_grad()
+
+                output_local = model(inputs)
+                output_meme = meme(inputs_aug)
+                # 蒸馏，互学习
+                ce_local = CE_Loss(output_local, labels)
+                kl_local = KL_Loss(LogSoftmax(output_local), Softmax(output_meme.detach()))
+                ce_meme = CE_Loss(output_meme, labels)
+                kl_meme = KL_Loss(LogSoftmax(output_meme), Softmax(output_local.detach()))
+
+                loss_local = alpha * ce_local + (1 - alpha) * kl_local
+                loss_meme = beta * ce_meme + (1 - beta) * kl_meme
+                loss = loss_local + loss_meme
+                loss.backward()
+
+                optimizer.step()
+                meme_optimizer.step()
+        return model.parameters(), meme.parameters()
+
+
+
+
 
 class LocalMPL(object):
     def __init__(self, args, labeled_loader, unlabeled_loader, lr):
@@ -108,28 +166,19 @@ class LocalMPL(object):
         # s_scheduler = tool.get_cosine_schedule_with_warmup(s_optimizer,
         #                                               30,
         #                                               self.args.round_num)
-        # print(f"cur lr: {t_scheduler.get_last_lr()}")
-        labeled_iter = iter(self.labeled_loader)
-        unlabeled_iter = iter(self.unlabeled_loader)
+        # print(f"cur lr: {t_scheduler.get_last_lr()}")=
 
         teacher_model.train()
         teacher_model = teacher_model.to(device)
         student_model.train()
         student_model = student_model.to(device)
         for e in range(self.epoch):
-            for batch_idx, (images_l, targets) in enumerate(labeled_iter):
+            for idx,(labeled_data, unlabeled_data) in enumerate(zip(self.labeled_loader,self.unlabeled_loader)):
+                images_l, targets = labeled_data[0],labeled_data[1]
+                images_us, images_uw, targets_u = labeled_data[0][0],labeled_data[0][1],labeled_data[1]
+
                 t_optimizer.zero_grad()
                 s_optimizer.zero_grad()
-                # try:
-                #     images_l, targets = labeled_iter.next()
-                # except:
-                #     labeled_iter = iter(self.labeled_loader)
-                #     images_l, targets = labeled_iter.next()
-                try:
-                    (images_uw, images_us), _ = unlabeled_iter.next()
-                except:
-                    unlabeled_iter = iter(self.unlabeled_loader)
-                    images_uw, images_us = unlabeled_iter.next()
                 images_l = images_l.to(device)
                 images_uw = images_uw.to(device)
                 images_us = images_us.to(device)

@@ -30,8 +30,10 @@ def fed_mpl(args,testset, part_data):
     client_private_models = {}
     for item in range(args.round_num):
         # 每过10轮学习率变为之前的0.1倍
-        factor = 10 ** math.floor(item / 10)
+        factor = 2 ** math.floor(item / 20)
         lr = args.lr / factor
+        if lr<0.001:
+            lr = 0.001
         print(f"---Round:{item},lr={lr} ---")
 
         # 每轮随机选择部分客户端

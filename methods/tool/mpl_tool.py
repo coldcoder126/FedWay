@@ -9,6 +9,7 @@ import math
 import torchvision
 from torchvision import datasets
 from torchvision.transforms import transforms
+import torchvision.transforms as T
 from PIL.Image import Image
 from torch.utils.data import Subset, DataLoader
 from methods.tool.augmentation import RandAugmentCIFAR
@@ -33,12 +34,14 @@ def x_u_split(labels, num_labeled, num_classes, expand_labels, batch_size, eval_
     np.random.shuffle(labeled_idx)
     return labeled_idx, unlabeled_idx
 
+
 cifar10_mean = (0.491400, 0.482158, 0.4465231)
 cifar10_std = (0.247032, 0.243485, 0.2615877)
 cifar100_mean = (0.507075, 0.486549, 0.440918)
 cifar100_std = (0.267334, 0.256438, 0.276151)
 normal_mean = (0.5, 0.5, 0.5)
 normal_std = (0.5, 0.5, 0.5)
+
 
 # ratio无标签数据占数据集的占比
 # 策略：随机分
@@ -79,10 +82,10 @@ def l_u_split(args, train_set_l, train_set_u, part_data, i):
     np.random.seed(args.seed)
     unlabeled_idx = np.random.choice(client_i_data_set_index, int(math.floor(sum * args.ratio)), replace=False)
     labeled_idx = np.setdiff1d(client_i_data_set_index, unlabeled_idx, assume_unique=True)
-    client_i_labeled_loader = DataLoader(dataset=Subset(train_set_l,labeled_idx),
-                                       batch_size=args.batch_size, shuffle=True)
-    client_i_unlabeled_loader = DataLoader(dataset=Subset(train_set_u,labeled_idx),
-                                       batch_size=args.batch_size, shuffle=True)
+    client_i_labeled_loader = DataLoader(dataset=Subset(train_set_l, labeled_idx),
+                                         batch_size=args.batch_size, shuffle=False)
+    client_i_unlabeled_loader = DataLoader(dataset=Subset(train_set_u, labeled_idx),
+                                           batch_size=args.batch_size, shuffle=False)
     return client_i_labeled_loader, client_i_unlabeled_loader
 
 
@@ -90,22 +93,20 @@ def l_u_split(args, train_set_l, train_set_u, part_data, i):
 def get_train_set(args):
     path = f"{args.data_path}/{args.dataset}"
     # 如果是有标签数据集
-    transform_labeled = transforms.Compose([
-        transforms.RandomHorizontalFlip(),  # 旋转和翻转
-        transforms.GaussianBlur(15, 10),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=cifar10_mean, std=cifar10_std),
+
+    transform_labeled = T.Compose([
+        T.RandomHorizontalFlip(),  # 旋转和翻转
+        T.AugMix(),
+        T.ToTensor(),
+        T.Normalize(mean=cifar10_mean, std=cifar10_std),
     ])
     train_set_labeled = torchvision.datasets.CIFAR10(root=path,
-                                         train=True, download=True, transform =transform_labeled )
+                                                     train=True, download=True, transform=transform_labeled)
     train_set_unlabeled = torchvision.datasets.CIFAR10(root=path,
-                                         train=True, download=True, transform= TransformMPL(resize=32,mean=cifar10_mean,std=cifar10_std))
-    return train_set_labeled,train_set_unlabeled
-
-
-
-
-
+                                                       train=True, download=True,
+                                                       transform=TransformMPL(resize=32, mean=cifar10_mean,
+                                                                              std=cifar10_std))
+    return train_set_labeled, train_set_unlabeled
 
 
 class CIFAR10SSL(datasets.CIFAR10):
@@ -140,13 +141,13 @@ class TransformMPL(object):
         #     n, m = randaug
         # else:
         #     n, m = 2, 10  # default
-        n,m = 2,10
+        n, m = 2, 10
         self.ori = transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.GaussianBlur(15, 10)])
         self.aug = transforms.Compose([
             transforms.RandomHorizontalFlip(),
-            transforms.GaussianBlur(15, 10),
+            T.AugMix(),
             RandAugmentCIFAR(n=n, m=m)])
         self.normalize = transforms.Compose([
             transforms.ToTensor(),
@@ -156,3 +157,42 @@ class TransformMPL(object):
         ori = self.ori(x)
         aug = self.aug(x)
         return self.normalize(ori), self.normalize(aug)
+
+
+class AverageMeter(object):
+    """Computes and stores the average and current value
+       Imported from https://github.com/pytorch/examples/blob/master/imagenet/main.py#L247-L262
+    """
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
+
+def get_train_set_aug(args):
+    path = f"{args.data_path}/{args.dataset}"
+    # 如果是有标签数据集
+    transform = transforms.Compose([transforms.ToTensor(),
+                                    transforms.Normalize(mean=[0.491, 0.482, 0.447], std=[0.247, 0.243, 0.262])])
+    transform_labeled = T.Compose([
+        T.RandomHorizontalFlip(),  # 旋转和翻转
+        T.AugMix(),
+        T.ToTensor(),
+        T.Normalize(mean=cifar10_mean, std=cifar10_std),
+    ])
+    train_set = torchvision.datasets.CIFAR10(root=path,
+                                                     train=True, download=True, transform=transform)
+    train_set_aug = torchvision.datasets.CIFAR10(root=path,
+                                                     train=True, download=True, transform=transform_labeled)
+    return train_set, train_set_aug

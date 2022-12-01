@@ -6,7 +6,7 @@ import datetime
 
 import torchvision
 import torchvision.transforms as transforms
-from methods.frame import fedavg, fed_mutual, fed_ring, fed_oneway, fed_mpl
+from methods.frame import fedavg, fed_mutual, fed_ring, fed_oneway, fed_mpl, fed_mutual_aug
 from utils import split
 
 OPTIMIZERS = ['fedavg', "fed_mutual"]
@@ -60,6 +60,7 @@ def run_fed():
 
     # fedavg.fedavg(args, train_set, test_set, part_data)
     # fed_mutual.fed_mutual(args,train_set,test_set,part_data)
+    # fed_mutual_aug.fed_mutual(args,test_set,part_data)
     # fed_ring.fed_ring(args,train_set,test_set,part_data)
     # fed_oneway.fed_oneway(args, train_set, test_set, part_data)
     fed_mpl.fed_mpl(args, test_set, part_data)
