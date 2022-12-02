@@ -16,7 +16,7 @@ from methods.tool import tool, mpl_tool
 # 本地模型和全局模型互学习
 def fed_mutual(args, testset, part_data):
     path = tool.mk_path(args)
-    writer_file = f"fed_mutual-aug-{args.dataset}-clientNum{args.client_num}-dir{args.alpha}-seed{args.seed}-lr{args.lr}"
+    writer_file = f"fed_mutual_aug-{args.dataset}-clientNum{args.client_num}-dir{args.alpha}-seed{args.seed}-lr{args.lr}"
     writer = SummaryWriter(f"{path}/{writer_file}")
     trainset, aug_dataset = mpl_tool.get_train_set_aug(args)
     # 所有已经分好组的训练集和测试集

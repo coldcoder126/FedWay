@@ -35,7 +35,7 @@ class LocalTrain(object):
                 loss = self.loss_func(prediction, labels)
                 per_epoch_loss.append(loss.item())
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(net.parameters(), 10000)
+                torch.nn.utils.clip_grad_norm_(net.parameters(), 1e7)
                 optimizer.step()
             per_loss = sum(per_epoch_loss) / len(per_epoch_loss)
             epoch_loss.append(per_loss)
@@ -114,7 +114,6 @@ class LocalMutualAug(object):
         for e in range(self.epoch):
             # Training
             for idx , (data, aug_data) in enumerate(zip(self.train_loader,self.train_loader_aug)):
-                print("a")
                 inputs,labels = data[0],data[1]
                 inputs_aug, labels_aug = aug_data[0], aug_data[1]
                 inputs, labels = inputs.to(device), labels.to(device)
@@ -153,7 +152,7 @@ class LocalMPL(object):
         self.lr = lr
 
     def train_MPL(self, teacher_model, student_model,round_num):
-        threshold = 15+(round_num*0.8)/self.args.round_num  # 教师对无标签数据的预测门槛
+        threshold = (self.args.round_num*0.15 +(round_num*0.8))/self.args.round_num  # 教师对无标签数据的预测门槛
         temperature = 1.2  # 温度
         uda_steps = self.args.round_num
         lambda_u = 1
@@ -175,7 +174,7 @@ class LocalMPL(object):
         for e in range(self.epoch):
             for idx,(labeled_data, unlabeled_data) in enumerate(zip(self.labeled_loader,self.unlabeled_loader)):
                 images_l, targets = labeled_data[0],labeled_data[1]
-                images_us, images_uw, targets_u = labeled_data[0][0],labeled_data[0][1],labeled_data[1]
+                images_us, images_uw, targets_u = unlabeled_data[0][0],unlabeled_data[0][1],unlabeled_data[1]
 
                 t_optimizer.zero_grad()
                 s_optimizer.zero_grad()
@@ -219,7 +218,7 @@ class LocalMPL(object):
                 s_loss = self.loss_func(s_logits_us, hard_pseudo_label)
 
                 s_loss.backward()
-                torch.nn.utils.clip_grad_norm_(student_model.parameters(), 10000)
+                torch.nn.utils.clip_grad_norm_(student_model.parameters(), 1e7)
                 s_optimizer.step()
                 # s_scheduler.step()
 
@@ -238,7 +237,7 @@ class LocalMPL(object):
                     t_loss += t_loss_mpl * min(1., (round_num-20) / 20)
 
                 t_loss.backward()
-                torch.nn.utils.clip_grad_norm_(teacher_model.parameters(), 10000)
+                torch.nn.utils.clip_grad_norm_(teacher_model.parameters(), 1e7)
                 t_optimizer.step()
                 # t_scheduler.step()
 
