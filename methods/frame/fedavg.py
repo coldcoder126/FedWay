@@ -2,9 +2,6 @@
 # @Author: 13483
 # @Time: 2022/9/16 20:24
 import copy
-import math
-import sys
-import torch
 from tensorboardX import SummaryWriter
 import numpy as np
 from torch.utils.data import Subset, DataLoader
@@ -27,10 +24,7 @@ def fedavg(args, trainset, testset, part_data):
     options['model']=args.model
     model = md.choose_model(options)
     for item in range(args.round_num):
-        # 每过10轮学习率变为之前的0.1倍
-        factor = 10 ** math.floor(item / 10)
-        lr = args.lr / factor
-        print(f"---Round:{item},lr={lr} ---")
+        lr = tool.getLr(args, item)
 
         # 每轮随机选择部分客户端
         idx_users = np.random.choice(range(args.client_num), args.clients_per_round, replace=False)

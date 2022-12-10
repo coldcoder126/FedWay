@@ -1,6 +1,7 @@
 # -*- codeing = utf-8 -*-
 # @Author: 13483
 # @Time: 2022/10/12 22:08
+import copy
 
 import torch
 from torch import nn
@@ -40,6 +41,75 @@ class LocalTrain(object):
             per_loss = sum(per_epoch_loss) / len(per_epoch_loss)
             epoch_loss.append(per_loss)
         return net.parameters(), sum(epoch_loss) / len(epoch_loss)
+
+    def train_prox(self, net):
+        global_net = copy.deepcopy(net)
+        global_weight_collector = list(global_net.to(device).parameters())
+        optimizer = torch.optim.SGD(net.parameters(), lr=self.lr, weight_decay=1e-3, momentum=0.9)
+        net.train()
+        net = net.to(device)
+        epoch_loss = []
+        for epoch in range(self.epoch):
+            per_epoch_loss = []
+            for batch_idx, (inputs, labels) in enumerate(self.train_loader):
+                inputs, labels = inputs.to(device), labels.to(device)
+                optimizer.zero_grad()
+                prediction = net(inputs)
+                loss = self.loss_func(prediction,labels)
+
+                # for fedprox
+                fed_prox_reg = 0.0
+                for param_index, param in enumerate(net.parameters()):
+                    fed_prox_reg += ((self.args.mu / 2) * torch.norm((param - global_weight_collector[param_index])) ** 2)
+                loss += fed_prox_reg
+                per_epoch_loss.append(loss.item())
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(net.parameters(), 1e7)
+                optimizer.step()
+            per_loss = sum(per_epoch_loss) / len(per_epoch_loss)
+            epoch_loss.append(per_loss)
+        return net.parameters(), sum(epoch_loss) / len(epoch_loss)
+
+    def train_scaffold(self, net, c):
+        global_net = copy.deepcopy(net)
+        optimizer = torch.optim.SGD(net.parameters(), lr=self.lr, weight_decay=1e-3, momentum=0.9)
+        net.train()
+        cnt = 0
+        net = net.to(device)
+        epoch_loss = []
+        c_global_para = global_net.state_dict()
+        c_local_para = net.state_dict()
+        for epoch in range(self.epoch):
+            per_epoch_loss = []
+            for batch_idx, (inputs, labels) in enumerate(self.train_loader):
+                inputs, labels = inputs.to(device), labels.to(device)
+                optimizer.zero_grad()
+                prediction = net(inputs)
+                loss = self.loss_func(prediction, labels)
+                per_epoch_loss.append(loss.item())
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(net.parameters(), 1e7)
+                optimizer.step()
+                cnt += 1
+                net_para = net.state_dict()
+                for key in net_para:
+                    net_para[key] = net_para[key] - self.lr * (c_global_para[key] - c_local_para[key])
+                net.load_state_dict(net_para)
+            per_loss = sum(per_epoch_loss) / len(per_epoch_loss)
+            epoch_loss.append(per_loss)
+
+        # 更新c
+        c_new_para = net.state_dict()
+        c_delta_para = copy.deepcopy(net.state_dict())
+        global_model_para = global_net.state_dict()
+        net_para = net.state_dict()
+        for key in net_para:
+            c_new_para[key] = c_new_para[key] - c_global_para[key] + (global_model_para[key] - net_para[key]) / (
+                        cnt * self.lr)
+            c_delta_para[key] = c_new_para[key] - c_local_para[key]
+        net.load_state_dict(c_new_para)
+        return net.parameters(), sum(epoch_loss) / len(epoch_loss), c_delta_para
+
 
     # 接受两个网络互学习，model是本地模型，meme是全局模型
     def train_mul(self, net1, net2):
@@ -208,12 +278,13 @@ class LocalMPL(object):
                 weight_u = lambda_u * min(1., (round_num + 1) / uda_steps)
                 t_loss_uda = t_loss_l + weight_u * t_loss_u
 
+                # 学生模型预测有标签数据和无标签_强增强数据
                 s_images = torch.cat((images_l, images_us))
                 s_logits = student_model(s_images)
                 s_logits_l = s_logits[:batch_size]
                 s_logits_us = s_logits[batch_size:]
                 del s_logits
-                # 学生模型更新前，预测有标签数据和真实数据的损失
+                # 学生模型更新前，计算有标签数据和真实数据的损失
                 s_loss_l_old = F.cross_entropy(s_logits_l.detach(), targets)
                 s_loss = self.loss_func(s_logits_us, hard_pseudo_label)
 
@@ -229,6 +300,8 @@ class LocalMPL(object):
                 # 学生模型更新后，再预测有标签数据和真实值之间的损失
                 s_loss_l_new = F.cross_entropy(s_logits_l.detach(), targets)
                 dot_product = s_loss_l_old - s_loss_l_new
+                # 前一个硬标签是t_logits_uw经过温度蒸馏后得到的
+                # 这一个硬标签是t_logits_us直接得到的
                 _, hard_pseudo_label = torch.max(t_logits_us.detach(), dim=-1)
                 t_loss_mpl = dot_product * F.cross_entropy(t_logits_us, hard_pseudo_label)
                 # t_loss = t_loss_uda + t_loss_mpl

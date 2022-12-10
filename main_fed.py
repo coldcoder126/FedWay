@@ -6,7 +6,7 @@ import datetime
 
 import torchvision
 import torchvision.transforms as transforms
-from methods.frame import fedavg, fed_mutual, fed_ring, fed_oneway, fed_mpl, fed_mutual_aug
+from methods.frame import fedavg, fed_mutual, fed_ring, fed_oneway, fed_mpl, fed_mutual_aug, fed_prox
 from utils import split
 
 OPTIMIZERS = ['fedavg', "fed_mutual"]
@@ -35,6 +35,9 @@ def read_options():
     # 以下仅MPL算法需要
     parser.add_argument('--resize', default=32, type=int, help='resize image')
     parser.add_argument('--ratio', default=0.3, type=float, help='unlabeled data rate')
+
+    # 以下仅fedProx算法需要
+    parser.add_argument('--mu', default=0.01, type=float, help='resize image')
     try:
         parsed = parser.parse_args()
     except IOError as msg:
@@ -63,7 +66,8 @@ def run_fed():
     # fed_mutual_aug.fed_mutual(args,test_set,part_data)
     # fed_ring.fed_ring(args,train_set,test_set,part_data)
     # fed_oneway.fed_oneway(args, train_set, test_set, part_data)
-    fed_mpl.fed_mpl(args, test_set, part_data)
+    # fed_mpl.fed_mpl(args, test_set, part_data)
+    fed_prox.fedprox(args,train_set, test_set,part_data)
 
 
 def load_loader(args):

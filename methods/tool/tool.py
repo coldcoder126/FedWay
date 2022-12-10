@@ -50,6 +50,13 @@ def global_test(model, test_loader):
     return acc
 
 
+def getLr(args, cur_round):
+    factor = 10 ** math.floor(cur_round / 10)
+    lr = args.lr / factor
+    print(f"---Round:{cur_round},lr={lr} ---")
+    return lr
+
+
 # 对模型进行聚合
 def aggregate_avg(flat_params):
     """Aggregate local solutions and output new global parameter
@@ -78,6 +85,7 @@ def aggregate_avg(flat_params):
     # averaged_solution = from_numpy(averaged_solution, self.gpu)
     return averaged_solution.detach()
 
+
 def get_cosine_schedule_with_warmup(optimizer,
                                     num_warmup_steps,
                                     num_training_steps,
@@ -92,10 +100,11 @@ def get_cosine_schedule_with_warmup(optimizer,
             return float(current_step) / float(max(1, num_warmup_steps + num_wait_steps))
 
         progress = float(current_step - num_warmup_steps - num_wait_steps) / \
-            float(max(1, num_training_steps - num_warmup_steps - num_wait_steps))
+                   float(max(1, num_training_steps - num_warmup_steps - num_wait_steps))
         return max(0.0, 0.5 * (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress)))
 
     return LambdaLR(optimizer, lr_lambda, last_epoch)
+
 
 def mk_path(args):
     path = f"{sys.path[0]}/{args.data_path}/run_result/{args.begin_time}/"
