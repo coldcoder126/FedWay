@@ -234,18 +234,6 @@ class WideResNet(nn.Module):
         return self.fc(self.drop(out))
 
 
-def build_wideresnet(args):
-    if args.dataset == "cifar10":
-        depth, widen_factor = 28, 2
-    elif args.dataset == 'cifar100':
-        depth, widen_factor = 28, 8
-
-    model = WideResNet(num_classes=args.num_classes,
-                       depth=depth,
-                       widen_factor=widen_factor,
-                       dropout=0,
-                       dense_dropout=args.dense_dropout)
-    return model
 
 
 
@@ -265,6 +253,12 @@ def choose_model(options):
         mod = importlib.import_module('src.models.vgg')
         vgg_model = getattr(mod, model_name)
         return vgg_model(options['num_class'])
+    elif model_name == 'resnet':
+        return WideResNet(num_classes=options['num_class'],
+                   depth=28,
+                   widen_factor=2,
+                   dropout=0,
+                   dense_dropout=0.2)
     else:
         raise ValueError("Not support model: {}!".format(model_name))
 

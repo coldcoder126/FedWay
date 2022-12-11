@@ -324,3 +324,47 @@ class LocalMPL(object):
 
         # 结束后，学生模型作为本地模型，教师模型作为全局模型
         return teacher_model, student_model
+
+
+class LocalDC(object):
+    def __init__(self, args, train_loader, train_loader_aug, lr):
+        self.args = args
+        self.loss_func = nn.CrossEntropyLoss()
+        self.train_loader = train_loader
+        self.train_loader_aug = train_loader_aug
+        self.epoch = args.epoch
+        self.lr = lr
+
+    def train_fed_dc(self,net):
+        optimizer = torch.optim.SGD(net.parameters(), lr=self.lr, weight_decay=1e-3, momentum=0.9)
+        net.train()
+        net = net.to(device)
+        epoch_loss = []
+        for epoch in range(self.epoch):
+            per_epoch_loss = []
+            for batch_idx, (inputs, labels) in enumerate(self.train_loader):
+                inputs, labels = inputs.to(device), labels.to(device)
+                optimizer.zero_grad()
+                prediction = net(inputs)
+                loss = self.loss_func(prediction, labels)
+                loss_f_i = loss/list(labels.size())[0]
+
+                local_parameter = None
+                for param in net.parameters():
+                    if not isinstance(local_parameter, torch.Tensor):
+                        # Initially nothing to concatenate
+                        local_parameter = param.reshape(-1)
+                    else:
+                        local_parameter = torch.cat((local_parameter, param.reshape(-1)), 0)
+                # loss_cp = alpha / 2 * torch.sum((local_parameter - (global_model_param - hist_i)) * (
+                #             local_parameter - (global_model_param - hist_i)))
+                # loss_cg = torch.sum(local_parameter * state_update_diff)
+
+
+                per_epoch_loss.append(loss.item())
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(net.parameters(), 1e7)
+                optimizer.step()
+            per_loss = sum(per_epoch_loss) / len(per_epoch_loss)
+            epoch_loss.append(per_loss)
+        return net.parameters(), sum(epoch_loss) / len(epoch_loss)

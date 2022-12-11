@@ -11,7 +11,7 @@ from utils import split
 
 OPTIMIZERS = ['fedavg', "fed_mutual"]
 DATASETS = ["mnist", "cifar10"]
-MODELS = ["cnn", "ccnn", "lenet", "vgg"]
+MODELS = ["cnn", "ccnn", "lenet", "vgg16", "resnet"]
 
 
 def read_options():
@@ -66,8 +66,8 @@ def run_fed():
     # fed_mutual_aug.fed_mutual(args,test_set,part_data)
     # fed_ring.fed_ring(args,train_set,test_set,part_data)
     # fed_oneway.fed_oneway(args, train_set, test_set, part_data)
-    # fed_mpl.fed_mpl(args, test_set, part_data)
-    fed_prox.fedprox(args,train_set, test_set,part_data)
+    fed_mpl.fed_mpl(args, test_set, part_data)
+    # fed_prox.fedprox(args,train_set, test_set,part_data)
 
 
 def load_loader(args):

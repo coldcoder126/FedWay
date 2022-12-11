@@ -51,8 +51,10 @@ def global_test(model, test_loader):
 
 
 def getLr(args, cur_round):
-    factor = 10 ** math.floor(cur_round / 10)
+    factor = 2 ** math.floor(cur_round / 20)
     lr = args.lr / factor
+    if lr < 0.001:
+        lr = 0.001
     print(f"---Round:{cur_round},lr={lr} ---")
     return lr
 
