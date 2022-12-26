@@ -20,9 +20,9 @@ def fed_mutual(args, testset, part_data):
     writer = SummaryWriter(f"{path}/{writer_file}")
     trainset, aug_dataset = mpl_tool.get_train_set_aug(args)
     # 所有已经分好组的训练集和测试集
-    train_loaders = [DataLoader(Subset(trainset, part_data.client_dict[i]), batch_size=args.batch_size, shuffle=False)
+    train_loaders = [DataLoader(Subset(trainset, part_data.client_dict[i]), batch_size=args.batch_size, shuffle=True, pin_memory=True,pin_memory_device=args.pm_device, num_workers=args.num_workers)
                      for i in range(args.client_num)]
-    train_loader_aug = [DataLoader(Subset(aug_dataset, part_data.client_dict[i]), batch_size=args.batch_size, shuffle=False)
+    train_loader_aug = [DataLoader(Subset(aug_dataset, part_data.client_dict[i]), batch_size=args.batch_size, shuffle=False, pin_memory=True,pin_memory_device=args.pm_device, num_workers=args.num_workers)
                      for i in range(args.client_num)]
     test_loader = DataLoader(testset, batch_size=args.batch_size, shuffle=False)
     # 选择模型

@@ -271,6 +271,8 @@ def generate_options(dataset,model):
             return {'input_shape': (1, 28, 28), 'num_class': 10}
     elif dataset == 'cifar10':
         return {'input_shape': (3, 32, 32), 'num_class': 10}
+    elif dataset == 'cifar100':
+        return {'input_shape': (3, 32, 32), 'num_class': 100}
     elif dataset == 'sent140':
         sent140 = {'bag_dnn': {'num_class': 2},
                    'stacked_lstm': {'seq_len': 25, 'num_class': 2, 'num_hidden': 100},

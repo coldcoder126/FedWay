@@ -2,9 +2,6 @@
 # @Author: 13483
 # @Time: 2022/10/29 1:44
 import copy
-import math
-import sys
-import torch
 from tensorboardX import SummaryWriter
 import numpy as np
 from torch.utils.data import Subset, DataLoader
@@ -16,7 +13,7 @@ from methods.tool import tool, mpl_tool
 def fed_mpl(args,testset, part_data):
     # 所有处理过的有标签数据集和无标签数据集
     labeled_dataset, unlabeled_dataset = mpl_tool.get_train_set(args)
-    test_loader = DataLoader(testset, batch_size=args.batch_size, shuffle=False)
+    test_loader = DataLoader(testset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
 
     path = tool.mk_path(args)
     writer_file = f"fed_MPL-{args.dataset}-clientNum{args.client_num}-dir{args.alpha}-seed{args.seed}-lr{args.lr}"
@@ -29,11 +26,11 @@ def fed_mpl(args,testset, part_data):
     # 需要记录每个客户端中的私有模型
     client_private_models = {}
     for item in range(args.round_num):
-        # 每过10轮学习率变为之前的0.1倍
         lr = tool.getLr(args, item)
-
         # 每轮随机选择部分客户端
+        np.random.seed(item)
         idx_users = np.random.choice(range(args.client_num), args.clients_per_round, replace=False)
+        print(f"selected clients:{idx_users}")
         selected_params = []
         for k in range(args.clients_per_round):
             l_loader,u_loader = mpl_tool.l_u_split(args,labeled_dataset,unlabeled_dataset,part_data,idx_users[k])
@@ -41,9 +38,8 @@ def fed_mpl(args,testset, part_data):
             teacher_model = copy.deepcopy(model)
             private_model = copy.deepcopy(model)
             if idx_users[k] in client_private_models.keys():
-                print(f"client {idx_users[k]} in dict")
+                # print(f"client {idx_users[k]} in dict")
                 private_model = client_private_models[idx_users[k]]
-
             local = LocalMPL(args, l_loader, u_loader, lr)
             local.train_MPL(teacher_model, private_model,item)
 

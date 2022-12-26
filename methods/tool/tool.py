@@ -109,7 +109,7 @@ def get_cosine_schedule_with_warmup(optimizer,
 
 
 def mk_path(args):
-    path = f"{sys.path[0]}/{args.data_path}/run_result/{args.begin_time}/"
+    path = f"{sys.path[0]}/{args.data_path}/run_result/{args.begin_time}-{args.desc}/"
     if not os.path.exists(path):
         os.makedirs(path)
     return path

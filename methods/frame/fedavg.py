@@ -16,9 +16,9 @@ def fedavg(args, trainset, testset, part_data):
     writer_file = f"fedavg-{args.dataset}-clientNum{args.client_num}-dir{args.alpha}-seed{args.seed}-lr{args.lr}"
     writer = SummaryWriter(f"{path}/{writer_file}")
     # 所有已经分好组的训练集和测试集
-    train_loaders = [DataLoader(Subset(trainset, part_data.client_dict[i]), batch_size=args.batch_size, shuffle=True)
+    train_loaders = [DataLoader(Subset(trainset, part_data.client_dict[i]), batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
                      for i in range(args.client_num)]
-    test_loader = DataLoader(testset, batch_size=args.batch_size, shuffle=False)
+    test_loader = DataLoader(testset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
     # 选择模型
     options = md.generate_options(args.dataset, args.model)
     options['model']=args.model
@@ -27,7 +27,9 @@ def fedavg(args, trainset, testset, part_data):
         lr = tool.getLr(args, item)
 
         # 每轮随机选择部分客户端
+        np.random.seed(item)
         idx_users = np.random.choice(range(args.client_num), args.clients_per_round, replace=False)
+        print(f"selected clients:{idx_users}")
         selected_params = []
         for k in range(args.clients_per_round):
             # 训练每个选到的客户端

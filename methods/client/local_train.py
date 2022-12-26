@@ -2,10 +2,13 @@
 # @Author: 13483
 # @Time: 2022/10/12 22:08
 import copy
+import time
 
 import torch
 from torch import nn
 from torch.nn import functional as F
+from tqdm import tqdm
+
 import methods.tool.tool as tool
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -22,7 +25,6 @@ class LocalTrain(object):
         self.lr = lr
 
     def train(self, net):
-
         optimizer = torch.optim.SGD(net.parameters(), lr=self.lr, weight_decay=1e-3, momentum=0.9)
         net.train()
         net = net.to(device)
@@ -36,7 +38,7 @@ class LocalTrain(object):
                 loss = self.loss_func(prediction, labels)
                 per_epoch_loss.append(loss.item())
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(net.parameters(), 1e7)
+                torch.nn.utils.clip_grad_norm_(net.parameters(), 1e5)
                 optimizer.step()
             per_loss = sum(per_epoch_loss) / len(per_epoch_loss)
             epoch_loss.append(per_loss)
@@ -64,7 +66,7 @@ class LocalTrain(object):
                 loss += fed_prox_reg
                 per_epoch_loss.append(loss.item())
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(net.parameters(), 1e7)
+                torch.nn.utils.clip_grad_norm_(net.parameters(), 1e5)
                 optimizer.step()
             per_loss = sum(per_epoch_loss) / len(per_epoch_loss)
             epoch_loss.append(per_loss)
@@ -88,7 +90,7 @@ class LocalTrain(object):
                 loss = self.loss_func(prediction, labels)
                 per_epoch_loss.append(loss.item())
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(net.parameters(), 1e7)
+                torch.nn.utils.clip_grad_norm_(net.parameters(), 1e5)
                 optimizer.step()
                 cnt += 1
                 net_para = net.state_dict()
@@ -242,10 +244,9 @@ class LocalMPL(object):
         student_model.train()
         student_model = student_model.to(device)
         for e in range(self.epoch):
-            for idx,(labeled_data, unlabeled_data) in enumerate(zip(self.labeled_loader,self.unlabeled_loader)):
+            for idx, (labeled_data, unlabeled_data) in enumerate(zip(self.labeled_loader,self.unlabeled_loader)):
                 images_l, targets = labeled_data[0],labeled_data[1]
                 images_us, images_uw, targets_u = unlabeled_data[0][0],unlabeled_data[0][1],unlabeled_data[1]
-
                 t_optimizer.zero_grad()
                 s_optimizer.zero_grad()
                 images_l = images_l.to(device)
@@ -263,7 +264,6 @@ class LocalMPL(object):
                 # 无标签数据两种增强的分数
                 t_logits_uw, t_logits_us = t_logits[batch_size:].chunk(2)
                 del t_logits
-
                 # 有标签数据和target之间的loss
                 t_loss_l = self.loss_func(t_logits_l, targets)
                 # 根据温度，将弱增强的的分数进行softmax
@@ -289,7 +289,7 @@ class LocalMPL(object):
                 s_loss = self.loss_func(s_logits_us, hard_pseudo_label)
 
                 s_loss.backward()
-                torch.nn.utils.clip_grad_norm_(student_model.parameters(), 1e7)
+                torch.nn.utils.clip_grad_norm_(student_model.parameters(), 1e5)
                 s_optimizer.step()
                 # s_scheduler.step()
 
@@ -310,16 +310,15 @@ class LocalMPL(object):
                     t_loss += t_loss_mpl * min(1., (round_num-20) / 20)
 
                 t_loss.backward()
-                torch.nn.utils.clip_grad_norm_(teacher_model.parameters(), 1e7)
+                torch.nn.utils.clip_grad_norm_(teacher_model.parameters(), 1e5)
                 t_optimizer.step()
-                # t_scheduler.step()
 
+                # t_scheduler.step()
                 # todo 微调
                 # prediction = teacher_model(images_l)
                 # loss = self.loss_func(prediction, targets)
                 # loss.backward()
                 # t_optimizer.step()
-
 
 
         # 结束后，学生模型作为本地模型，教师模型作为全局模型
@@ -363,7 +362,7 @@ class LocalDC(object):
 
                 per_epoch_loss.append(loss.item())
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(net.parameters(), 1e7)
+                torch.nn.utils.clip_grad_norm_(net.parameters(), 1e5)
                 optimizer.step()
             per_loss = sum(per_epoch_loss) / len(per_epoch_loss)
             epoch_loss.append(per_loss)

@@ -1,6 +1,7 @@
 # -*- codeing = utf-8 -*-
 # @Author: 13483
 # @Time: 2022/10/29 9:45
+import time
 from random import random
 
 import PIL
@@ -78,14 +79,14 @@ normal_std = (0.5, 0.5, 0.5)
 def l_u_split(args, train_set_l, train_set_u, part_data, i):
     # 客户端i的所有数据集索引
     client_i_data_set_index = part_data.client_dict[i]
-    sum = client_i_data_set_index.shape[0]
-    np.random.seed(args.seed)
-    unlabeled_idx = np.random.choice(client_i_data_set_index, int(math.floor(sum * args.ratio)), replace=False)
-    labeled_idx = np.setdiff1d(client_i_data_set_index, unlabeled_idx, assume_unique=True)
-    client_i_labeled_loader = DataLoader(dataset=Subset(train_set_l, labeled_idx),
-                                         batch_size=args.batch_size, shuffle=False)
-    client_i_unlabeled_loader = DataLoader(dataset=Subset(train_set_u, labeled_idx),
-                                           batch_size=args.batch_size, shuffle=False)
+    # sum = client_i_data_set_index.shape[0]
+    # np.random.seed(args.seed)
+    # unlabeled_idx = np.random.choice(client_i_data_set_index, int(math.floor(sum * args.ratio)), replace=False)
+    # labeled_idx = np.setdiff1d(client_i_data_set_index, unlabeled_idx, assume_unique=True)
+    client_i_labeled_loader = DataLoader(dataset=Subset(train_set_l, client_i_data_set_index),
+                                         batch_size=args.batch_size, shuffle=False,num_workers=args.num_workers)
+    client_i_unlabeled_loader = DataLoader(dataset=Subset(train_set_u, client_i_data_set_index),
+                                           batch_size=args.batch_size, shuffle=False,num_workers=args.num_workers)
     return client_i_labeled_loader, client_i_unlabeled_loader
 
 
@@ -93,20 +94,37 @@ def l_u_split(args, train_set_l, train_set_u, part_data, i):
 def get_train_set(args):
     path = f"{args.data_path}/{args.dataset}"
     # 如果是有标签数据集
-
-    transform_labeled = T.Compose([
-        T.RandomHorizontalFlip(),  # 旋转和翻转
-        T.AugMix(),
-        T.ToTensor(),
-        T.Normalize(mean=cifar10_mean, std=cifar10_std),
-    ])
-    train_set_labeled = torchvision.datasets.CIFAR10(root=path,
-                                                     train=True, download=True, transform=transform_labeled)
-    train_set_unlabeled = torchvision.datasets.CIFAR10(root=path,
-                                                       train=True, download=True,
-                                                       transform=TransformMPL(resize=32, mean=cifar10_mean,
-                                                                              std=cifar10_std))
-    return train_set_labeled, train_set_unlabeled
+    if args.dataset == "cifar10":
+        transform_labeled = T.Compose([
+            T.RandomHorizontalFlip(),  # 旋转和翻转
+            T.RandomCrop(size=args.resize,
+                         padding=int(args.resize * 0.125),
+                         fill=128,
+                         padding_mode='constant'),
+            T.ToTensor(),
+            T.Normalize(mean=cifar10_mean, std=cifar10_std),
+        ])
+        train_set_labeled = torchvision.datasets.CIFAR10(root=path,
+                                                         train=True, download=True, transform=transform_labeled)
+        train_set_unlabeled = torchvision.datasets.CIFAR10(root=path,
+                                                           train=True, download=True,
+                                                           transform=TransformMPL(resize=args.resize, mean=cifar10_mean,
+                                                                                  std=cifar10_std))
+        return train_set_labeled, train_set_unlabeled
+    if args.dataset == "cifar100":
+        transform_labeled = T.Compose([
+            T.RandomHorizontalFlip(),  # 旋转和翻转
+            T.AugMix(),
+            T.ToTensor(),
+            T.Normalize(mean=cifar100_mean, std=cifar100_std),
+        ])
+        train_set_labeled = torchvision.datasets.CIFAR100(root=path,
+                                                         train=True, download=True, transform=transform_labeled)
+        train_set_unlabeled = torchvision.datasets.CIFAR100(root=path,
+                                                           train=True, download=True,
+                                                           transform=TransformMPL(resize=args.resize, mean=cifar100_mean,
+                                                                                  std=cifar100_std))
+        return train_set_labeled, train_set_unlabeled
 
 
 class CIFAR10SSL(datasets.CIFAR10):
@@ -144,10 +162,16 @@ class TransformMPL(object):
         n, m = 2, 10
         self.ori = transforms.Compose([
             transforms.RandomHorizontalFlip(),
-            transforms.GaussianBlur(15, 10)])
+            T.RandomCrop(size=resize,
+                         padding=int(resize * 0.125),
+                         fill=128,
+                         padding_mode='constant')])
         self.aug = transforms.Compose([
-            transforms.RandomHorizontalFlip(),
-            T.AugMix(),
+            T.RandomHorizontalFlip(),
+            T.RandomCrop(size=resize,
+                         padding=int(resize * 0.125),
+                         fill=128,
+                         padding_mode='constant'),
             RandAugmentCIFAR(n=n, m=m)])
         self.normalize = transforms.Compose([
             transforms.ToTensor(),
@@ -187,7 +211,10 @@ def get_train_set_aug(args):
                                     transforms.Normalize(mean=[0.491, 0.482, 0.447], std=[0.247, 0.243, 0.262])])
     transform_labeled = T.Compose([
         T.RandomHorizontalFlip(),  # 旋转和翻转
-        T.AugMix(),
+        T.RandomCrop(size=args.resize,
+                     padding=int(args.resize * 0.125),
+                     fill=128,
+                     padding_mode='constant'),
         T.ToTensor(),
         T.Normalize(mean=cifar10_mean, std=cifar10_std),
     ])

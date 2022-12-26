@@ -10,7 +10,7 @@ from methods.frame import fedavg, fed_mutual, fed_ring, fed_oneway, fed_mpl, fed
 from utils import split
 
 OPTIMIZERS = ['fedavg', "fed_mutual"]
-DATASETS = ["mnist", "cifar10"]
+DATASETS = ["mnist", "cifar10","cifar100"]
 MODELS = ["cnn", "ccnn", "lenet", "vgg16", "resnet"]
 
 
@@ -32,6 +32,9 @@ def read_options():
     parser.add_argument("--alpha", help="dirichlet parameter alpha", type=float, default=1)
     parser.add_argument("--begin_time", help="run begin time", type=str,
                         default=datetime.datetime.now().strftime('%Y-%m-%d-%H-%M'))
+    parser.add_argument("--num_workers", help="num workers in dataloader", type=int, default=2)
+    parser.add_argument("--desc", help="describe of experiment", type=str, default='default experiment')
+
     # 以下仅MPL算法需要
     parser.add_argument('--resize', default=32, type=int, help='resize image')
     parser.add_argument('--ratio', default=0.3, type=float, help='unlabeled data rate')
@@ -61,12 +64,12 @@ def run_fed():
 
     part_data = split.dirichlet_part(args=args, trainset=train_set, alpha=alpha)
 
-    # fedavg.fedavg(args, train_set, test_set, part_data)
+    fedavg.fedavg(args, train_set, test_set, part_data)
     # fed_mutual.fed_mutual(args,train_set,test_set,part_data)
     # fed_mutual_aug.fed_mutual(args,test_set,part_data)
     # fed_ring.fed_ring(args,train_set,test_set,part_data)
     # fed_oneway.fed_oneway(args, train_set, test_set, part_data)
-    fed_mpl.fed_mpl(args, test_set, part_data)
+    # fed_mpl.fed_mpl(args, test_set, part_data)
     # fed_prox.fedprox(args,train_set, test_set,part_data)
 
 
@@ -93,6 +96,16 @@ def load_loader(args):
         train_set = torchvision.datasets.CIFAR10(root=path,
                                                  train=True, download=True, transform=transform)
         test_set = torchvision.datasets.CIFAR10(root=path,
+                                                train=False, download=True, transform=transform)
+        return train_set, test_set
+
+    if args.dataset == "cifar100":
+        transform = transforms.Compose([transforms.ToTensor(),
+                                        transforms.Normalize(mean=[0.507, 0.486, 0.440], std=[0.267, 0.256, 0.276])])
+
+        train_set = torchvision.datasets.CIFAR100(root=path,
+                                                 train=True, download=True, transform=transform)
+        test_set = torchvision.datasets.CIFAR100(root=path,
                                                 train=False, download=True, transform=transform)
         return train_set, test_set
 
