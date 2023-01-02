@@ -75,10 +75,10 @@ def split_test():
                                          num_clients=20,
                                          balance=None,
                                          partition="dirichlet",
-                                         dir_alpha=0.3,
+                                         dir_alpha=0.05,
                                          verbose=False,
                                          seed=1)
-    csv_file="D:\\WorkSpace\\Pycharm\\FedWay\\utils\\cifar10_hetero_dir_0_3_20clients.csv"
+    csv_file="D:\\WorkSpace\\Pycharm\\FedWay\\utils\\cifar10_blc_none_005_20clients.csv"
     partition_report(trainset.targets, hetero_dir_part.client_dict,
                      class_num=num_classes,
                      verbose=False, file=csv_file)
@@ -92,7 +92,7 @@ def split_test():
     hetero_dir_part_df[col_names].iloc[:10].plot.barh(stacked=True)
     plt.tight_layout()
     plt.xlabel('sample num')
-    plt.savefig(f"cifar10_hetero_dir_0_3_20clients.png", dpi=400)
+    plt.savefig(f"cifar10_blc_none_005_20clients.png", dpi=400)
 
 
 if __name__ == '__main__':

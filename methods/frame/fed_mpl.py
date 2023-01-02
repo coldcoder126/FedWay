@@ -32,6 +32,7 @@ def fed_mpl(args,testset, part_data):
         idx_users = np.random.choice(range(args.client_num), args.clients_per_round, replace=False)
         print(f"selected clients:{idx_users}")
         selected_params = []
+        selected_data_num = []  # 选中客户端的样本数量
         for k in range(args.clients_per_round):
             l_loader,u_loader = mpl_tool.l_u_split(args,labeled_dataset,unlabeled_dataset,part_data,idx_users[k])
             #
@@ -45,10 +46,11 @@ def fed_mpl(args,testset, part_data):
 
             x = teacher_model.parameters()
             selected_params.append(tool.get_flat_params_from(x))
+            selected_data_num.append(l_loader.dataset.indices.size)
             client_private_models[idx_users[k]] = copy.deepcopy(private_model)
 
         # 每轮训练结束后，将该轮选取的客户端模型聚合，得到最新的全局模型
-        global_param = tool.aggregate_avg(selected_params)
+        global_param = tool.aggregate_avg(selected_params,selected_data_num)
         tool.set_flat_params_to(model, global_param)
         # 每一轮训练完，测试全局模型在全局测试集上的表现
         global_acc = tool.global_test(model, test_loader)

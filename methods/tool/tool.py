@@ -60,7 +60,7 @@ def getLr(args, cur_round):
 
 
 # 对模型进行聚合
-def aggregate_avg(flat_params):
+def aggregate_avg(flat_params,selected_data_num):
     """Aggregate local solutions and output new global parameter
 
     Args:
@@ -74,11 +74,18 @@ def aggregate_avg(flat_params):
     # averaged_solution = np.zeros(self.latest_model.shape)
 
     # 简单平均
+    # num = 0
+    # for local_solution in flat_params:
+    #     num += 1
+    #     averaged_solution += local_solution
+    # averaged_solution /= num
+
+    # 按照模型中的数据量平均
     num = 0
-    for local_solution in flat_params:
-        num += 1
-        averaged_solution += local_solution
-    averaged_solution /= num
+    for i in selected_data_num:
+        num += i
+    for j in range(len(flat_params)):
+        averaged_solution += flat_params[j] * (selected_data_num[j]/num)
 
     # for num_sample, local_solution in flat_params:
     #     averaged_solution += num_sample * local_solution
