@@ -78,7 +78,10 @@ class CifarCnn(nn.Module):
         self.fc1 = nn.Linear(64*5*5, 512)
         self.fc2 = nn.Linear(512, 128)
         self.fc3 = nn.Linear(128, out_dim)
-
+        self.bn1 = nn.BatchNorm2d(32)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.bn3 = nn.BatchNorm1d(512)
+        self.bn4 = nn.BatchNorm1d(128)
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
@@ -91,13 +94,13 @@ class CifarCnn(nn.Module):
                     m.bias.data.uniform_(-stdv, stdv)
 
     def forward(self, x):
-        out = F.relu(self.conv1(x))
+        out = F.relu(self.bn1(self.conv1(x)))
         out = F.max_pool2d(out, 2)
-        out = F.relu(self.conv2(out))
+        out = F.relu(self.bn2(self.conv2(out)))
         out = F.max_pool2d(out, 2)
         out = out.view(out.size(0), -1)
-        out = F.relu(self.fc1(out))
-        out = F.relu(self.fc2(out))
+        out = F.relu(self.bn3(self.fc1(out)))
+        out = F.relu(self.bn4(self.fc2(out)))
         out = self.fc3(out)
         return out
 
