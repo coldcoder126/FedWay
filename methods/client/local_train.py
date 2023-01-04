@@ -243,6 +243,7 @@ class LocalMPL(object):
         teacher_model = teacher_model.to(device)
         student_model.train()
         student_model = student_model.to(device)
+        before = time.time()
         for e in range(self.epoch):
             for idx, (labeled_data, unlabeled_data) in enumerate(zip(self.labeled_loader,self.unlabeled_loader)):
                 images_l, targets = labeled_data[0],labeled_data[1]
@@ -312,7 +313,8 @@ class LocalMPL(object):
                 t_loss.backward()
                 torch.nn.utils.clip_grad_norm_(teacher_model.parameters(), 1e5)
                 t_optimizer.step()
-
+            endtime = time.time()
+            print(f"epooch-{e}训练用时：{endtime - before}")
                 # t_scheduler.step()
                 # todo 微调
                 # prediction = teacher_model(images_l)

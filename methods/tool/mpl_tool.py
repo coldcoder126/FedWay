@@ -40,6 +40,8 @@ cifar10_mean = (0.491400, 0.482158, 0.4465231)
 cifar10_std = (0.247032, 0.243485, 0.2615877)
 cifar100_mean = (0.507075, 0.486549, 0.440918)
 cifar100_std = (0.267334, 0.256438, 0.276151)
+svhn_mean = (0.485, 0.456, 0.406)
+svhn_std = (0.229, 0.224, 0.225)
 normal_mean = (0.5, 0.5, 0.5)
 normal_std = (0.5, 0.5, 0.5)
 
@@ -84,9 +86,9 @@ def l_u_split(args, train_set_l, train_set_u, part_data, i):
     # unlabeled_idx = np.random.choice(client_i_data_set_index, int(math.floor(sum * args.ratio)), replace=False)
     # labeled_idx = np.setdiff1d(client_i_data_set_index, unlabeled_idx, assume_unique=True)
     client_i_labeled_loader = DataLoader(dataset=Subset(train_set_l, client_i_data_set_index),
-                                         batch_size=args.batch_size, shuffle=False,num_workers=args.num_workers)
+                                         batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
     client_i_unlabeled_loader = DataLoader(dataset=Subset(train_set_u, client_i_data_set_index),
-                                           batch_size=args.batch_size, shuffle=False,num_workers=args.num_workers)
+                                           batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
     return client_i_labeled_loader, client_i_unlabeled_loader
 
 
@@ -119,11 +121,26 @@ def get_train_set(args):
             T.Normalize(mean=cifar100_mean, std=cifar100_std),
         ])
         train_set_labeled = torchvision.datasets.CIFAR100(root=path,
-                                                         train=True, download=True, transform=transform_labeled)
+                                                          train=True, download=True, transform=transform_labeled)
         train_set_unlabeled = torchvision.datasets.CIFAR100(root=path,
-                                                           train=True, download=True,
-                                                           transform=TransformMPL(resize=args.resize, mean=cifar100_mean,
-                                                                                  std=cifar100_std))
+                                                            train=True, download=True,
+                                                            transform=TransformMPL(resize=args.resize,
+                                                                                   mean=cifar100_mean,
+                                                                                   std=cifar100_std))
+        return train_set_labeled, train_set_unlabeled
+    if args.dataset == "svhn":
+        transform_labeled = T.Compose([
+            T.RandomHorizontalFlip(),  # 旋转和翻转
+            T.AugMix(),
+            T.ToTensor(),
+            T.Normalize(mean=svhn_mean, std=svhn_std),
+        ])
+        train_set_labeled = torchvision.datasets.SVHN(root=path,
+                                                      split='train', download=True, transform=transform_labeled)
+        train_set_unlabeled = torchvision.datasets.SVHN(root=path,
+                                                        split='train', download=True,
+                                                        transform=TransformMPL(resize=args.resize, mean=svhn_mean,
+                                                                               std=svhn_std))
         return train_set_labeled, train_set_unlabeled
 
 
@@ -219,7 +236,7 @@ def get_train_set_aug(args):
         T.Normalize(mean=cifar10_mean, std=cifar10_std),
     ])
     train_set = torchvision.datasets.CIFAR10(root=path,
-                                                     train=True, download=True, transform=transform)
+                                             train=True, download=True, transform=transform)
     train_set_aug = torchvision.datasets.CIFAR10(root=path,
-                                                     train=True, download=True, transform=transform_labeled)
+                                                 train=True, download=True, transform=transform_labeled)
     return train_set, train_set_aug

@@ -64,12 +64,12 @@ def run_fed():
 
     part_data = split.dirichlet_part(args=args, trainset=train_set, alpha=alpha)
 
-    fedavg.fedavg(args, train_set, test_set, part_data)
-    fed_mutual.fed_mutual(args, train_set, test_set, part_data)
+    # fedavg.fedavg(args, train_set, test_set, part_data)
+    # fed_mutual.fed_mutual(args, train_set, test_set, part_data)
     # fed_mutual_aug.fed_mutual(args,test_set,part_data)
     # fed_ring.fed_ring(args,train_set,test_set,part_data)
     # fed_oneway.fed_oneway(args, train_set, test_set, part_data)
-    # fed_mpl.fed_mpl(args, test_set, part_data)
+    fed_mpl.fed_mpl(args, test_set, part_data)
     # fed_prox.fedprox(args,train_set, test_set,part_data)
 
 
