@@ -9,7 +9,7 @@ import torchvision
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from fedlab.utils.dataset.partition import CIFAR10Partitioner, MNISTPartitioner, CIFAR100Partitioner
+from fedlab.utils.dataset.partition import CIFAR10Partitioner, MNISTPartitioner, CIFAR100Partitioner, SVHNPartitioner
 
 
 # 使用fedlab实现自定义dirichlet分布，并将结果保存为文件，下次加载即可使用
@@ -42,6 +42,13 @@ def dirichlet_part(args, trainset, alpha):
                                              dir_alpha=alpha,
                                              verbose=False,
                                              seed=seed)
+    if dataset == "svhn":
+        hetero_dir_part = SVHNPartitioner(trainset.labels,
+                                          num_clients,
+                                          partition="noniid-labeldir",
+                                          dir_alpha=alpha,
+                                          verbose=False,
+                                          seed=seed)
     return hetero_dir_part
 
 

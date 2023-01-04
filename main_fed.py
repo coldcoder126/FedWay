@@ -10,7 +10,7 @@ from methods.frame import fedavg, fed_mutual, fed_ring, fed_oneway, fed_mpl, fed
 from utils import split
 
 OPTIMIZERS = ['fedavg', "fed_mutual"]
-DATASETS = ["mnist", "cifar10","cifar100"]
+DATASETS = ["mnist", "cifar10", "cifar100","svhn"]
 MODELS = ["cnn", "ccnn", "lenet", "vgg16", "resnet"]
 
 
@@ -64,8 +64,8 @@ def run_fed():
 
     part_data = split.dirichlet_part(args=args, trainset=train_set, alpha=alpha)
 
-    # fedavg.fedavg(args, train_set, test_set, part_data)
-    fed_mutual.fed_mutual(args,train_set,test_set,part_data)
+    fedavg.fedavg(args, train_set, test_set, part_data)
+    fed_mutual.fed_mutual(args, train_set, test_set, part_data)
     # fed_mutual_aug.fed_mutual(args,test_set,part_data)
     # fed_ring.fed_ring(args,train_set,test_set,part_data)
     # fed_oneway.fed_oneway(args, train_set, test_set, part_data)
@@ -104,9 +104,17 @@ def load_loader(args):
                                         transforms.Normalize(mean=[0.507, 0.486, 0.440], std=[0.267, 0.256, 0.276])])
 
         train_set = torchvision.datasets.CIFAR100(root=path,
-                                                 train=True, download=True, transform=transform)
+                                                  train=True, download=True, transform=transform)
         test_set = torchvision.datasets.CIFAR100(root=path,
-                                                train=False, download=True, transform=transform)
+                                                 train=False, download=True, transform=transform)
+        return train_set, test_set
+    if args.dataset == 'svhn':
+        transform = transforms.Compose([transforms.ToTensor(),
+                                        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+        train_set = torchvision.datasets.SVHN(root=path,
+                                              split='train', download=True, transform=transform)
+        test_set = torchvision.datasets.SVHN(root=path,
+                                             split='test', download=True, transform=transform)
         return train_set, test_set
 
 
