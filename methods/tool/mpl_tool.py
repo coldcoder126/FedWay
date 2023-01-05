@@ -116,7 +116,10 @@ def get_train_set(args):
     if args.dataset == "cifar100":
         transform_labeled = T.Compose([
             T.RandomHorizontalFlip(),  # 旋转和翻转
-            T.AugMix(),
+            T.RandomCrop(size=args.resize,
+                         padding=int(args.resize * 0.125),
+                         fill=128,
+                         padding_mode='constant'),
             T.ToTensor(),
             T.Normalize(mean=cifar100_mean, std=cifar100_std),
         ])
@@ -131,7 +134,10 @@ def get_train_set(args):
     if args.dataset == "svhn":
         transform_labeled = T.Compose([
             T.RandomHorizontalFlip(),  # 旋转和翻转
-            T.AugMix(),
+            T.RandomCrop(size=args.resize,
+                         padding=int(args.resize * 0.125),
+                         fill=128,
+                         padding_mode='constant'),
             T.ToTensor(),
             T.Normalize(mean=svhn_mean, std=svhn_std),
         ])

@@ -6,6 +6,7 @@ import time
 
 import torch
 from torch import nn
+from torch.cuda import amp
 from torch.nn import functional as F
 from tqdm import tqdm
 
@@ -255,39 +256,39 @@ class LocalMPL(object):
                 images_us = images_us.to(device)
                 targets = targets.to(device)
 
-                # with amp.autocast(enabled=args.amp): 精度转换（暂时不要）
-                batch_size = images_l.shape[0]
-                t_images = torch.cat((images_l, images_uw, images_us))
+                with amp.autocast(enabled=True): # 精度转换（暂时不要）
+                    batch_size = images_l.shape[0]
+                    t_images = torch.cat((images_l, images_uw, images_us))
 
-                t_logits = teacher_model(t_images)
-                # 有标签数据的Logit分数
-                t_logits_l = t_logits[:batch_size]
-                # 无标签数据两种增强的分数
-                t_logits_uw, t_logits_us = t_logits[batch_size:].chunk(2)
-                del t_logits
-                # 有标签数据和target之间的loss
-                t_loss_l = self.loss_func(t_logits_l, targets)
-                # 根据温度，将弱增强的的分数进行softmax
-                soft_pseudo_label = torch.softmax(t_logits_uw.detach() / temperature, dim=-1)
-                # 将分数按最大提取为硬标签
-                max_probs, hard_pseudo_label = torch.max(soft_pseudo_label, dim=-1)
-                # 根据置信度取出
-                mask = max_probs.ge(threshold).float()
-                t_loss_u = torch.mean(
-                    -(soft_pseudo_label * torch.log_softmax(t_logits_us, dim=-1)).sum(dim=-1) * mask
-                )
-                weight_u = lambda_u * min(1., (round_num + 1) / uda_steps)
-                t_loss_uda = t_loss_l + weight_u * t_loss_u
+                    t_logits = teacher_model(t_images)
+                    # 有标签数据的Logit分数
+                    t_logits_l = t_logits[:batch_size]
+                    # 无标签数据两种增强的分数
+                    t_logits_uw, t_logits_us = t_logits[batch_size:].chunk(2)
+                    del t_logits
+                    # 有标签数据和target之间的loss
+                    t_loss_l = self.loss_func(t_logits_l, targets)
+                    # 根据温度，将弱增强的的分数进行softmax
+                    soft_pseudo_label = torch.softmax(t_logits_uw.detach() / temperature, dim=-1)
+                    # 将分数按最大提取为硬标签
+                    max_probs, hard_pseudo_label = torch.max(soft_pseudo_label, dim=-1)
+                    # 根据置信度取出
+                    mask = max_probs.ge(threshold).float()
+                    t_loss_u = torch.mean(
+                        -(soft_pseudo_label * torch.log_softmax(t_logits_us, dim=-1)).sum(dim=-1) * mask
+                    )
+                    weight_u = lambda_u * min(1., (round_num + 1) / uda_steps)
+                    t_loss_uda = t_loss_l + weight_u * t_loss_u
 
-                # 学生模型预测有标签数据和无标签_强增强数据
-                s_images = torch.cat((images_l, images_us))
-                s_logits = student_model(s_images)
-                s_logits_l = s_logits[:batch_size]
-                s_logits_us = s_logits[batch_size:]
-                del s_logits
-                # 学生模型更新前，计算有标签数据和真实数据的损失
-                s_loss_l_old = F.cross_entropy(s_logits_l.detach(), targets)
-                s_loss = self.loss_func(s_logits_us, hard_pseudo_label)
+                    # 学生模型预测有标签数据和无标签_强增强数据
+                    s_images = torch.cat((images_l, images_us))
+                    s_logits = student_model(s_images)
+                    s_logits_l = s_logits[:batch_size]
+                    s_logits_us = s_logits[batch_size:]
+                    del s_logits
+                    # 学生模型更新前，计算有标签数据和真实数据的损失
+                    s_loss_l_old = F.cross_entropy(s_logits_l.detach(), targets)
+                    s_loss = self.loss_func(s_logits_us, hard_pseudo_label)
 
                 s_loss.backward()
                 torch.nn.utils.clip_grad_norm_(student_model.parameters(), 1e5)
@@ -296,19 +297,20 @@ class LocalMPL(object):
 
 
                 # 更新教师模型
-                with torch.no_grad():
-                    s_logits_l = student_model(images_l)
-                # 学生模型更新后，再预测有标签数据和真实值之间的损失
-                s_loss_l_new = F.cross_entropy(s_logits_l.detach(), targets)
-                dot_product = s_loss_l_old - s_loss_l_new
-                # 前一个硬标签是t_logits_uw经过温度蒸馏后得到的
-                # 这一个硬标签是t_logits_us直接得到的
-                _, hard_pseudo_label = torch.max(t_logits_us.detach(), dim=-1)
-                t_loss_mpl = dot_product * F.cross_entropy(t_logits_us, hard_pseudo_label)
-                # t_loss = t_loss_uda + t_loss_mpl
-                t_loss = t_loss_uda
-                if(round_num>20):
-                    t_loss += t_loss_mpl * min(1., (round_num-20) / 20)
+                with amp.autocast(enabled=True):
+                    with torch.no_grad():
+                        s_logits_l = student_model(images_l)
+                    # 学生模型更新后，再预测有标签数据和真实值之间的损失
+                    s_loss_l_new = F.cross_entropy(s_logits_l.detach(), targets)
+                    dot_product = s_loss_l_old - s_loss_l_new
+                    # 前一个硬标签是t_logits_uw经过温度蒸馏后得到的
+                    # 这一个硬标签是t_logits_us直接得到的
+                    _, hard_pseudo_label = torch.max(t_logits_us.detach(), dim=-1)
+                    t_loss_mpl = dot_product * F.cross_entropy(t_logits_us, hard_pseudo_label)
+                    # t_loss = t_loss_uda + t_loss_mpl
+                    t_loss = t_loss_uda
+                    if round_num>20:
+                        t_loss += t_loss_mpl * min(1., (round_num-20) / 20)
 
                 t_loss.backward()
                 torch.nn.utils.clip_grad_norm_(teacher_model.parameters(), 1e5)

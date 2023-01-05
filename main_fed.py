@@ -36,7 +36,7 @@ def read_options():
     parser.add_argument("--desc", help="describe of experiment", type=str, default='default experiment')
 
     # 以下仅MPL算法需要
-    parser.add_argument('--resize', default=32, type=int, help='resize image')
+    parser.add_argument('--resize', default=28, type=int, help='resize image')
     parser.add_argument('--ratio', default=0.3, type=float, help='unlabeled data rate')
 
     # 以下仅fedProx算法需要
@@ -64,7 +64,7 @@ def run_fed():
 
     part_data = split.dirichlet_part(args=args, trainset=train_set, alpha=alpha)
 
-    # fedavg.fedavg(args, train_set, test_set, part_data)
+    fedavg.fedavg(args, train_set, test_set, part_data)
     # fed_mutual.fed_mutual(args, train_set, test_set, part_data)
     # fed_mutual_aug.fed_mutual(args,test_set,part_data)
     # fed_ring.fed_ring(args,train_set,test_set,part_data)
