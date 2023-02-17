@@ -18,7 +18,7 @@ def fedprox(args, trainset, testset, part_data):
     writer_file = f"fedprox-{args.dataset}-clientNum{args.client_num}-dir{args.alpha}-seed{args.seed}-lr{args.lr}"
     writer = SummaryWriter(f"{path}/{writer_file}")
     # 所有已经分好组的训练集和测试集
-    train_loaders = [DataLoader(Subset(trainset, part_data.client_dict[i]), batch_size=args.batch_size, shuffle=True,num_workers=args.num_workers)
+    train_loaders = [DataLoader(Subset(trainset, part_data.client_dict[i]), batch_size=args.batch_size, pin_memory=True, shuffle=True,num_workers=args.num_workers)
                      for i in range(args.client_num)]
     test_loader = DataLoader(testset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
     # 选择模型

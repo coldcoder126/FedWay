@@ -73,15 +73,15 @@ class TwoConvOneFc(nn.Module):
 class CifarCnn(nn.Module):
     def __init__(self, input_shape, out_dim):
         super(CifarCnn, self).__init__()
+        self.bn1 = nn.BatchNorm2d(32)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.bn3 = nn.BatchNorm1d(512)
+        self.bn4 = nn.BatchNorm1d(128)
         self.conv1 = nn.Conv2d(input_shape[0], 32, 5)
         self.conv2 = nn.Conv2d(32, 64, 5)
         self.fc1 = nn.Linear(64*5*5, 512)
         self.fc2 = nn.Linear(512, 128)
         self.fc3 = nn.Linear(128, out_dim)
-        self.bn1 = nn.BatchNorm2d(32)
-        self.bn2 = nn.BatchNorm2d(64)
-        self.bn3 = nn.BatchNorm1d(512)
-        self.bn4 = nn.BatchNorm1d(128)
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels

@@ -7,12 +7,14 @@ from random import random
 import PIL
 import numpy as np
 import math
+
+import torch
 import torchvision
 from torchvision import datasets
 from torchvision.transforms import transforms
 import torchvision.transforms as T
 from PIL.Image import Image
-from torch.utils.data import Subset, DataLoader
+from torch.utils.data import Subset, DataLoader, Dataset
 from methods.tool.augmentation import RandAugmentCIFAR
 
 
@@ -86,9 +88,9 @@ def l_u_split(args, train_set_l, train_set_u, part_data, i):
     # unlabeled_idx = np.random.choice(client_i_data_set_index, int(math.floor(sum * args.ratio)), replace=False)
     # labeled_idx = np.setdiff1d(client_i_data_set_index, unlabeled_idx, assume_unique=True)
     client_i_labeled_loader = DataLoader(dataset=Subset(train_set_l, client_i_data_set_index),
-                                         batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
+                                         batch_size=args.batch_size, pin_memory=True, shuffle=False, num_workers=args.num_workers)
     client_i_unlabeled_loader = DataLoader(dataset=Subset(train_set_u, client_i_data_set_index),
-                                           batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
+                                           batch_size=args.batch_size, pin_memory=True, shuffle=False, num_workers=args.num_workers)
     return client_i_labeled_loader, client_i_unlabeled_loader
 
 
@@ -133,7 +135,8 @@ def get_train_set(args):
         return train_set_labeled, train_set_unlabeled
     if args.dataset == "svhn":
         transform_labeled = T.Compose([
-            T.RandomHorizontalFlip(),  # 旋转和翻转
+            #T.RandomHorizontalFlip(),  # 旋转和翻转
+            T.RandomAffine(degrees=0, translate=(0, 0), shear=45),
             T.RandomCrop(size=args.resize,
                          padding=int(args.resize * 0.125),
                          fill=128,
@@ -231,8 +234,8 @@ def get_train_set_aug(args):
     path = f"{args.data_path}/{args.dataset}"
     # 如果是有标签数据集
     transform = transforms.Compose([transforms.ToTensor(),
-                                    transforms.Normalize(mean=[0.491, 0.482, 0.447], std=[0.247, 0.243, 0.262])])
-    transform_labeled = T.Compose([
+                                    transforms.Normalize(mean=cifar10_mean, std=cifar10_std)])
+    transform_aug = T.Compose([
         T.RandomHorizontalFlip(),  # 旋转和翻转
         T.RandomCrop(size=args.resize,
                      padding=int(args.resize * 0.125),
@@ -244,5 +247,91 @@ def get_train_set_aug(args):
     train_set = torchvision.datasets.CIFAR10(root=path,
                                              train=True, download=True, transform=transform)
     train_set_aug = torchvision.datasets.CIFAR10(root=path,
-                                                 train=True, download=True, transform=transform_labeled)
+                                                 train=True, download=True, transform=transform_aug)
     return train_set, train_set_aug
+
+
+def get_local_train_set_aug(args):
+    path = f"{args.data_path}/{args.dataset}"
+    # 如果是有标签数据集
+    transform = transforms.Compose([transforms.ToTensor(),
+                                    transforms.Normalize(mean=cifar10_mean, std=cifar10_std)])
+    transform_aug = T.Compose([
+        T.RandomHorizontalFlip(),  # 旋转和翻转
+        T.RandomCrop(size=args.resize,
+                     padding=int(args.resize * 0.125),
+                     fill=128,
+                     padding_mode='constant'),
+        T.ToTensor(),
+        T.Normalize(mean=cifar10_mean, std=cifar10_std),
+    ])
+    train_set = torchvision.datasets.CIFAR10(root=path,
+                                             train=True, download=True, transform=transform)
+    train_set_aug = torchvision.datasets.CIFAR10(root=path,
+                                                 train=True, download=True, transform=transform_aug)
+    return train_set, train_set_aug
+
+
+
+
+def get_train_set_aug2(args):
+    path = f"{args.data_path}/{args.dataset}"
+    # 如果是有标签数据集
+    transform = transforms.Compose([transforms.ToTensor(),
+                                    transforms.Normalize(mean=cifar10_mean, std=cifar10_std)])
+    transform_aug = T.Compose([
+        T.RandomHorizontalFlip(),  # 旋转和翻转
+        T.RandomCrop(size=args.resize,
+                     padding=int(args.resize * 0.125),
+                     fill=128,
+                     padding_mode='constant'),
+        T.ToTensor(),
+        T.Normalize(mean=cifar10_mean, std=cifar10_std),
+    ])
+    train_set = torchvision.datasets.CIFAR10(root=path,
+                                             train=True, download=True, transform=transform)
+    train_set_aug = torchvision.datasets.CIFAR10(root=path,
+                                                 train=True, download=True, transform=TransformMPL(resize=args.resize, mean=cifar10_mean,
+                                                                                  std=cifar10_std))
+    return train_set, train_set_aug
+
+class MyTensorDataset(Dataset):
+    def __init__(self, data_tensor, target_tensor=None, transforms=None, target_transforms=None):
+        if target_tensor is not None:
+            assert data_tensor.size(0) == target_tensor.size(0)
+        self.data_tensor = data_tensor
+        self.target_tensor = target_tensor
+
+        if transforms is None:
+            transforms = []
+        if target_transforms is None:
+            target_transforms = []
+
+        if not isinstance(transforms, list):
+            transforms = [transforms]
+        if not isinstance(target_transforms, list):
+            target_transforms = [target_transforms]
+
+        self.transforms = transforms
+        self.target_transforms = target_transforms
+
+    def __getitem__(self, index):
+        data_tensor = self.data_tensor[index].view(3,32,32)
+        if torch.is_tensor(data_tensor):
+            data_tensor = transforms.ToPILImage()(data_tensor)
+        for transform in self.transforms:
+            data_tensor = transform(data_tensor)
+
+        if self.target_tensor is None:
+            return data_tensor
+        if not torch.is_tensor(data_tensor):
+            data_tensor = transforms.ToTensor()(data_tensor)
+
+        target_tensor = self.target_tensor[index]
+        for transform in self.target_transforms:
+            target_tensor = transform(target_tensor)
+
+        return data_tensor, target_tensor
+
+    def __len__(self):
+        return self.data_tensor.size(0)

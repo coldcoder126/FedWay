@@ -6,7 +6,7 @@ import datetime
 
 import torchvision
 import torchvision.transforms as transforms
-from methods.frame import fedavg, fed_mutual, fed_ring, fed_oneway, fed_mpl, fed_mutual_aug, fed_prox
+from methods.frame import fedavg,fedavg2,fedavg3,fed_con, fed_mutual, fed_ring, fed_oneway, fed_mpl, fed_mutual_aug, fed_mutual_aug2, fed_prox, fed_mul_aug2_1
 from utils import split
 
 OPTIMIZERS = ['fedavg', "fed_mutual"]
@@ -25,7 +25,7 @@ def read_options():
     parser.add_argument("--epoch", help="epoch", type=int, default=5)
     parser.add_argument("--class_num", help="count of all classes ", type=int)
     parser.add_argument("--clients_per_round", type=int, default=10)
-    parser.add_argument("--batch_size", help="batch size", type=int, default=32)
+    parser.add_argument("--batch_size", help="batch size", type=int, default=64)
     parser.add_argument("--round_num", help="number of rounds", type=int, default=100)
     parser.add_argument("--lr", help="learning rate", type=float, default=0.04)
     parser.add_argument("--seed", help="seed for randomness", type=int, default=1)
@@ -34,13 +34,17 @@ def read_options():
                         default=datetime.datetime.now().strftime('%Y-%m-%d-%H-%M'))
     parser.add_argument("--num_workers", help="num workers in dataloader", type=int, default=2)
     parser.add_argument("--desc", help="describe of experiment", type=str, default='default experiment')
-
+    parser.add_argument("--threshold", help="threshold of train round", type=int, default=-1)
     # 以下仅MPL算法需要
-    parser.add_argument('--resize', default=28, type=int, help='resize image')
+    parser.add_argument('--resize', default=32, type=int, help='resize image')
     parser.add_argument('--ratio', default=0.3, type=float, help='unlabeled data rate')
 
     # 以下仅fedProx算法需要
     parser.add_argument('--mu', default=0.01, type=float, help='resize image')
+
+    # fedavg2算法需要
+    parser.add_argument('--ln', default=4, type=int, help='number of layers in model to upload')
+    parser.add_argument('--temp', default=0.07, type=float, help='temperature')
     try:
         parsed = parser.parse_args()
     except IOError as msg:
@@ -64,12 +68,18 @@ def run_fed():
 
     part_data = split.dirichlet_part(args=args, trainset=train_set, alpha=alpha)
 
-    fedavg.fedavg(args, train_set, test_set, part_data)
+    fed_con.fed_con(args,train_set,test_set,part_data)
+    # fedavg.fedavg(args, train_set, test_set, part_data)
+    # fedavg2.fedavg(args, train_set, test_set, part_data)
+    # fedavg3.fedavg(args, train_set, test_set, part_data)
+
     # fed_mutual.fed_mutual(args, train_set, test_set, part_data)
     # fed_mutual_aug.fed_mutual(args,test_set,part_data)
+    fed_mul_aug2_1.fed_mutual(args,test_set,part_data)
+    # fed_mutual_aug2.fed_mutual(args,test_set,part_data)
     # fed_ring.fed_ring(args,train_set,test_set,part_data)
     # fed_oneway.fed_oneway(args, train_set, test_set, part_data)
-    fed_mpl.fed_mpl(args, test_set, part_data)
+    # fed_mpl.fed_mpl(args, test_set, part_data)
     # fed_prox.fedprox(args,train_set, test_set,part_data)
 
 

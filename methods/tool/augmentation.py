@@ -299,7 +299,7 @@ class RandAugmentCIFAR(object):
         self.augment_pool = cifar_augment_pool()
 
     def __call__(self, img):
-        # 随机选择一些变换操作
+        # 随机选择n个变换操作
         ops = random.choices(self.augment_pool, k=self.n)
         for op, max_v, bias in ops:
             prob = np.random.uniform(0.2, 0.8)

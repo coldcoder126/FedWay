@@ -32,6 +32,40 @@ def set_flat_params_to(model, flat_params):
             flat_params[prev_ind:prev_ind + flat_size].view(param.size()))
         prev_ind += flat_size
 
+def set_flat_params_custom(model, flat_params,percent):
+    prev_ind = 0
+    for param in model.parameters():
+        flat_size = int(np.prod(list(param.size())))
+        param.data.copy_(
+            flat_params[prev_ind:prev_ind + flat_size].view(param.size()) * percent + param.data * (1-percent) )
+        prev_ind += flat_size
+
+# 更新模型的指定层参数
+def set_layer_to_model(args,layer_tensor, model):
+    layers = list(model.parameters())[-args.ln:]
+    prev_ind = 0
+    for layer in layers:
+        if len(layer.shape)==2:
+            layer_size = layer.shape[0]*layer.shape[1]
+            layer.data.copy_(layer_tensor[prev_ind:layer_size + prev_ind].view(layer.shape[0],-1))
+        else:
+            layer_size = layer.size()[0]
+            layer.data.copy_(layer_tensor[prev_ind:layer_size+prev_ind])
+        prev_ind += layer_size
+
+
+# 将net1的最高p层替换为net2中的最高p层
+def replace_layers(args, net1, net2):
+
+    layers1 = list(net1.parameters())[-args.ln:]
+    layers2 = list(net2.parameters())[-args.ln:]
+    for i in range(len(layers1)):
+        layers1[i].data = layers2[i].data
+    print("done")
+
+
+
+
 
 def global_test(model, test_loader):
     correct = 0
@@ -93,7 +127,6 @@ def aggregate_avg(flat_params,selected_data_num):
 
     # averaged_solution = from_numpy(averaged_solution, self.gpu)
     return averaged_solution.detach()
-
 
 def get_cosine_schedule_with_warmup(optimizer,
                                     num_warmup_steps,
