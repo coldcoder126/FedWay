@@ -54,6 +54,7 @@ def fed_con(args, trainset, testset, part_data):
     server_sample_loader = DataLoader(server_dataset,batch_size=20)
     # 初始化一个编码器 将图片编码至128维
     server_encoder = SupConResNet('resnet18')
+    server_encoder = server_encoder.to(device)
     server_classifier = LinearClassifier()
     server_optimizer = torch.optim.SGD(server_encoder.parameters(), lr=0.1, weight_decay=1e-3, momentum=0.5)
     criteria = Contrastive_loss_batch(0.7)
@@ -67,6 +68,7 @@ def fed_con(args, trainset, testset, part_data):
             loss.backward()
             server_optimizer.step()
     server_reps_map = {idx.item():reps[idx] for idx in labels[:10]}
+    con_tool.server_sim_test(server_reps_map)
 
 
     # 服务端训练完成后将Encoder、图片、表示发送给Clients
@@ -79,7 +81,7 @@ def fed_con(args, trainset, testset, part_data):
         # 每轮随机选择部分客户端
         np.random.seed(item)
         idx_client = np.random.choice(range(args.client_num), args.clients_per_round, replace=False)
-        classifier_condition = (item > 20)
+        classifier_condition = (item >= 0)
         for k in idx_client:
             local_data_loader = train_loaders[k]
             client_data_num.append(local_data_loader.sampler.num_samples)

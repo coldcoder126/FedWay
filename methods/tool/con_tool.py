@@ -117,7 +117,7 @@ def net_avg(idx_client, client_nets, server_net,client_data_num):
     for k in keys:
         l = [encoders[i].state_dict()[k] * rate[i]  for i in range(len(encoders))]
         param = torch.stack(l).sum(dim=0)
-        server_net.state_dict()[k].copy_(param)
+        server_net.state_dict()[k].copy_((param+server_net.state_dict()[k])/2)
     return server_net
 
 
@@ -138,3 +138,15 @@ def global_test(encoder, classifier, test_loader):
             correct += (predicted == target).sum().item()
     acc = 100 * correct / total
     return acc
+
+# 测试表示之间的相似度
+def server_sim_test(server_rep_map):
+    cos_fun = nn.CosineSimilarity(dim=0, eps=1e-6)
+    rep = [val for val in server_rep_map.values()]
+    size = len(rep)
+    for i in range(size):
+        res = []
+        for j in range(size):
+            sim = cos_fun(rep[i],rep[j])
+            res.append(sim.item())
+        print(f"第{i}个和其他 :{res}")

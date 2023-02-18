@@ -19,8 +19,8 @@ class ClientCon(object):
 
     def train_encoder(self):
         encoder = self.encoder.to(device)
-        optimizer = torch.optim.SGD(encoder.parameters(), lr=0.05, weight_decay=1e-3, momentum=0.9)
-        scheduler = lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.5)
+        optimizer = torch.optim.SGD(encoder.parameters(), self.lr, weight_decay=1e-3, momentum=0.9)
+        scheduler = lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.8)
         encoder.train()
         criterion = SupConLoss(temperature=self.args.temp)
         criterion2 = CosLoss()
@@ -52,18 +52,19 @@ class ClientCon(object):
         for k in final_reps.keys():
             cos_fun = nn.CosineSimilarity(dim=0,eps=1e-6)
             cos_sim = cos_fun(final_reps[k],self.anchor[k])
-            print(f"label {k} cos_sim={cos_sim}")
+            print(f"平均label {k} cos_sim={cos_sim}")
         return encoder, final_reps
 
     def train_classifier(self,classifier):
         encoder = self.encoder.to(device)
         classifier = classifier.to(device)
 
-        optimizer = torch.optim.SGD(classifier.parameters(), lr=0.05, weight_decay=1e-3, momentum=0.9)
-        scheduler = lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.5)
+        optimizer = torch.optim.SGD(classifier.parameters(), lr=self.lr, weight_decay=1e-3, momentum=0.9)
+        scheduler = lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.8)
         classifier.train()
         criterion = nn.CrossEntropyLoss()
         for epoch in range(self.args.epoch):
+            all_loss = []
             for batch_idx, (images, labels) in enumerate(self.train_loader):
                 images = torch.cat([images[0], images[1]], dim=0)
                 images, labels = images.to(device), labels.to(device)
@@ -74,8 +75,10 @@ class ClientCon(object):
                 labels = torch.cat([labels,labels])
                 pred = classifier(features)
                 ce_loss = criterion(pred,labels)
+                all_loss.append(ce_loss.item())
                 ce_loss.backward()
                 optimizer.step()
+            print(f"epoch:{epoch} loss:{sum(all_loss)/len(all_loss)}")
             scheduler.step()
         return classifier
 
