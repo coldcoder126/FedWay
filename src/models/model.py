@@ -9,6 +9,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from src.models import resnet
+
 
 class Logistic(nn.Module):
     def __init__(self,in_dim, out_dim):
@@ -81,7 +83,7 @@ class CifarCnn(nn.Module):
         self.conv2 = nn.Conv2d(32, 64, 5)
         self.fc1 = nn.Linear(64*5*5, 512)
         self.fc2 = nn.Linear(512, 128)
-        self.fc3 = nn.Linear(128, out_dim)
+        self.fc = nn.Linear(128, out_dim)
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
@@ -101,9 +103,55 @@ class CifarCnn(nn.Module):
         out = out.view(out.size(0), -1)
         out = F.relu(self.bn3(self.fc1(out)))
         out = F.relu(self.bn4(self.fc2(out)))
-        out = self.fc3(out)
+        out = self.fc(out)
         return out
 
+class CifarCnnEncoder(nn.Module):
+    def __init__(self, input_shape, feat_dim):
+        super(CifarCnnEncoder, self).__init__()
+        self.bn1 = nn.BatchNorm2d(32)
+        self.bn2 = nn.BatchNorm2d(64)
+        self.bn3 = nn.BatchNorm1d(512)
+        self.bn4 = nn.BatchNorm1d(128)
+        self.conv1 = nn.Conv2d(input_shape[0], 32, 5)
+        self.conv2 = nn.Conv2d(32, 64, 5)
+        self.fc1 = nn.Linear(64*5*5, 512)
+        self.fc2 = nn.Linear(512, feat_dim)
+        # self.fc3 = nn.Linear(128, out_dim)
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+                m.bias.data.zero_()
+            elif isinstance(m, nn.Linear):
+                stdv = 1. / math.sqrt(m.weight.size(1))
+                m.weight.data.uniform_(-stdv, stdv)
+                if m.bias is not None:
+                    m.bias.data.uniform_(-stdv, stdv)
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = F.max_pool2d(out, 2)
+        out = F.relu(self.bn2(self.conv2(out)))
+        out = F.max_pool2d(out, 2)
+        out = out.view(out.size(0), -1)
+        out = F.relu(self.bn3(self.fc1(out)))
+        out = F.relu(self.bn4(self.fc2(out)))
+        return out
+
+
+class LocalModel(nn.Module):
+    def __init__(self, base, head):
+        super(LocalModel, self).__init__()
+
+        self.base = base
+        self.head = head
+
+    def forward(self, x):
+        out = self.base(x)
+        out = self.head(out)
+
+        return out
 
 class ModelEMA(nn.Module):
     def __init__(self, model, decay=0.9999, device=None):
@@ -257,13 +305,14 @@ def choose_model(options):
         vgg_model = getattr(mod, model_name)
         return vgg_model(options['num_class'])
     elif model_name == 'resnet':
-        return WideResNet(num_classes=options['num_class'],
-                   depth=28,
-                   widen_factor=2,
-                   dropout=0,
-                   dense_dropout=0.2)
+        return resnet.resnet18(options['num_class'])
     else:
         raise ValueError("Not support model: {}!".format(model_name))
+
+def choose_encoder(name,feat_dim):
+    if name == 'ccnn':
+        return CifarCnnEncoder((3, 32, 32),feat_dim)
+
 
 def generate_options(dataset,model):
     model = model.lower()

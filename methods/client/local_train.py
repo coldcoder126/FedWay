@@ -13,9 +13,11 @@ from torchvision.transforms import transforms as T
 
 from methods.tool.augmentation import RandAugmentCIFAR
 from methods.tool.mpl_tool import MyTensorDataset
-from tqdm import tqdm
-
+from src.optimizer.loss_con import MySupConLoss
+from src.optimizer.loss_mul import dkd_loss
+from methods.tool import con_tool
 import methods.tool.tool as tool
+from src.optimizer.loss_rslad import rslad_inner_loss
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -51,7 +53,7 @@ class LocalTrain(object):
         return net, sum(epoch_loss) / len(epoch_loss)
 
     # 用于fedavg2
-    def train2(self, net):
+    def train_aug(self, loader, loader_aug, net):
         optimizer = torch.optim.SGD(net.parameters(), lr=self.lr, weight_decay=1e-3, momentum=0.9)
         net.train()
         net = net.to(device)
@@ -59,8 +61,11 @@ class LocalTrain(object):
         err_local_count = 0
         for epoch in range(self.epoch):
             per_epoch_loss = []
-            for batch_idx, (inputs, labels) in enumerate(self.train_loader):
+            for idx, (data, aug_data) in enumerate(zip(loader, loader_aug)):
+                inputs, labels = data[0], data[1]
+                inputs_aug, labels_aug = aug_data[0], aug_data[1]
                 inputs, labels = inputs.to(device), labels.to(device)
+                inputs_aug = inputs_aug.to(device)
                 optimizer.zero_grad()
                 prediction = net(inputs)
                 if epoch == 0:
@@ -106,7 +111,6 @@ class LocalTrain(object):
                 optimizer.step()
             per_loss = sum(per_epoch_loss) / len(per_epoch_loss)
             epoch_loss.append(per_loss)
-        return net.parameters(), sum(epoch_loss) / len(epoch_loss)
 
     def train_scaffold(self, net, c):
         global_net = copy.deepcopy(net)
@@ -179,20 +183,20 @@ class LocalTrain(object):
                 output_meme = meme(inputs)
                 # 蒸馏，互学习
                 ce_local = CE_Loss(output_local, labels)
-                # kl_local = KL_Loss(LogSoftmax(output_local), Softmax(output_meme.detach()))
+                kl_local = KL_Loss(LogSoftmax(output_local), Softmax(output_meme.detach()))
                 ce_meme = CE_Loss(output_meme, labels)
-                # kl_meme = KL_Loss(LogSoftmax(output_meme), Softmax(output_local.detach()))
+                kl_meme = KL_Loss(LogSoftmax(output_meme), Softmax(output_local.detach()))
 
-                ce = CE_Loss(output_local,output_meme)
 
-                loss_local = alpha * ce_local
-                loss_meme = beta * ce_meme
-                loss = loss_local + loss_meme + (1-alpha) * ce
+                loss_local = alpha * ce_local + (1 - alpha) * kl_local
+                loss_meme = beta * ce_meme + (1 - beta) * kl_meme
+                loss = loss_local + loss_meme
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1e5)
+                torch.nn.utils.clip_grad_norm_(meme.parameters(), 1e5)
 
                 optimizer.step()
                 meme_optimizer.step()
-        return model.parameters(), meme.parameters()
 
 # 增强互学习，教师模型输入加噪的数据，本地客户端使用不加噪的数据
 class LocalMutualAug(object):
@@ -223,34 +227,53 @@ class LocalMutualAug(object):
         beta = 0.9
 
         for e in range(self.epoch):
+            # loss_list = []
+            # loss_ce_local = []
+            # loss_ce_meme = []
             # Training
             for idx , (data, aug_data) in enumerate(zip(self.train_loader,self.train_loader_aug)):
                 inputs,labels = data[0],data[1]
                 inputs_aug, labels_aug = aug_data[0], aug_data[1]
                 inputs, labels = inputs.to(device), labels.to(device)
                 inputs_aug = inputs_aug.to(device)
-                optimizer.zero_grad()
+                # optimizer.zero_grad()
                 meme_optimizer.zero_grad()
 
-                output_local = model(inputs)
-                output_meme = meme(inputs_aug)
-                # 蒸馏，互学习
-                ce_local = CE_Loss(output_local, labels)
-                kl_local = KL_Loss(LogSoftmax(output_local), Softmax(output_meme.detach()))
-                ce_meme = CE_Loss(output_meme, labels)
-                kl_meme = KL_Loss(LogSoftmax(output_meme), Softmax(output_local.detach()))
+                # output_local = model(inputs)
+                # output_meme = meme(inputs_aug)
+                #
+                # # 蒸馏，互学习
+                # ce_local = CE_Loss(output_local, labels)
+                # kl_local = KL_Loss(LogSoftmax(output_local), Softmax(output_meme.detach()))
+                # ce_meme = CE_Loss(output_meme, labels)
+                # kl_meme = KL_Loss(LogSoftmax(output_meme), Softmax(output_local.detach()))
+                #
+                # loss_ce_local.append(ce_local.item())
+                # loss_ce_meme.append(ce_meme.item())
+                #
+                # loss_local = alpha * ce_local + (1 - alpha) * kl_local
+                # loss_meme = beta * ce_meme + (1 - beta) * kl_meme
+                # loss = loss_local + loss_meme
+                # loss_list.append(loss.item())
+                # loss.backward()
 
-                loss_local = alpha * ce_local + (1 - alpha) * kl_local
-                loss_meme = beta * ce_meme + (1 - beta) * kl_meme
-                loss = loss_local + loss_meme
+                output_T = model(inputs)
+                epsilon = 8 / 255.0
+                output_S_ = rslad_inner_loss(meme, output_T, inputs, labels, meme_optimizer,
+                                              step_size=2 / 255.0, epsilon=epsilon, perturb_steps=10)
+                output_S = meme(inputs)
+                # output_S_ = meme(inputs_aug)
+
+                kl1 = KL_Loss(LogSoftmax(output_S), Softmax(output_T.detach()))
+                kl2 = KL_Loss(LogSoftmax(output_S_), Softmax(output_T.detach()))
+
+                loss = kl1 + kl2
                 loss.backward()
-
-                optimizer.step()
+                # optimizer.step()
                 meme_optimizer.step()
-        return model.parameters(), meme.parameters()
+            # print(f"epoch {e} loss :{sum(loss_list)/len(loss_list)} ce_local={sum(loss_ce_local)/len(loss_ce_local)} ce_meme = {sum(loss_ce_meme)/len(loss_ce_meme)}")
 
-# 增强互学习，教师模型输入加噪的数据，本地客户端使用不加噪的数据，使用上次的CE差值
-class LocalMutualAug2(object):
+class LocalMutualAugCon(object):
     def __init__(self, args, train_loader, train_loader_aug, lr):
         self.args = args
         self.loss_func = nn.CrossEntropyLoss()
@@ -276,21 +299,49 @@ class LocalMutualAug2(object):
         CE_Loss = nn.CrossEntropyLoss()
         alpha = 0.9
         beta = 0.9
-
+        class_dis_map = {}
         for e in range(self.epoch):
             # Training
-            factor = 0.0
+            loss_ce_local = []
+            loss_ce_meme = []
+            conl = []
+            cong = []
+            loss_cons = []
             for idx , (data, aug_data) in enumerate(zip(self.train_loader,self.train_loader_aug)):
-                inner_factor = 1.0+factor
                 inputs,labels = data[0],data[1]
                 inputs_aug, labels_aug = aug_data[0], aug_data[1]
                 inputs, labels = inputs.to(device), labels.to(device)
                 inputs_aug = inputs_aug.to(device)
+                if e == 0:
+                    con_tool.count_class_dis(class_dis_map, labels)
                 optimizer.zero_grad()
                 meme_optimizer.zero_grad()
+                reps_local = model.base(inputs)
+                reps_aug = meme.base(inputs_aug)
 
-                output_local = model(inputs)
-                output_meme = meme(inputs_aug)
+                output_local = model.head(reps_local)
+                output_meme = meme.head(reps_aug)
+
+                # 方式一
+                # fs = torch.cat([reps_local,reps_aug])
+                # ls = torch.cat([labels,labels]).detach()
+                #
+                # if torch.unique(labels).shape[0] == 1:
+                #     sup_con_loss = torch.tensor(0)
+                # else:
+                #     sup_con_loss = MySupConLoss(fs,ls, 0.5)
+
+                # 方式二
+                if torch.unique(labels).shape[0] > 1:
+                    sup_con_loss_l = MySupConLoss(reps_local,labels, 0.5)
+                    sup_con_loss_g = MySupConLoss(reps_aug,labels,0.5)
+                    conl.append(sup_con_loss_l.item())
+                    cong.append(sup_con_loss_g.item())
+                    kl_l = KL_Loss(LogSoftmax(reps_local), Softmax(reps_aug.detach()))
+                    kl_g = KL_Loss(LogSoftmax(reps_aug), Softmax(reps_local.detach()))
+                    sup_con_loss = sup_con_loss_l+sup_con_loss_g + (1-alpha) * (kl_l + kl_g)
+                    loss_cons.append(sup_con_loss.item())
+
                 # 蒸馏，互学习
                 ce_local = CE_Loss(output_local, labels)
                 kl_local = KL_Loss(LogSoftmax(output_local), Softmax(output_meme.detach()))
@@ -299,18 +350,166 @@ class LocalMutualAug2(object):
 
                 loss_local = alpha * ce_local + (1 - alpha) * kl_local
                 loss_meme = beta * ce_meme + (1 - beta) * kl_meme
-                loss = loss_local * inner_factor + loss_meme
-                loss.backward()
+                loss = loss_local + loss_meme
+                if torch.unique(labels).shape[0] > 1:
+                    loss += sup_con_loss
 
+                loss_ce_local.append(ce_local.item())
+                loss_ce_meme.append(ce_meme.item())
+
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1e5)
+                torch.nn.utils.clip_grad_norm_(meme.parameters(), 1e5)
                 optimizer.step()
                 meme_optimizer.step()
+            if e == 0:
+                print(class_dis_map)
+            print(f"epoch {e} ce_local :{sum(loss_ce_local)/len(loss_ce_local)} ce_meme:{sum(loss_ce_meme)/(len(loss_ce_meme)+0.1)} con_l = {sum(conl)/(len(conl)+0.01)} con_g = {sum(cong)/(len(cong)+0.01)} loss_cons:{sum(loss_cons)/(len(loss_cons)+0.01)}  ")
 
-                # 这批次数据检测
-                output_new = model(inputs.detach())
-                ce_new = CE_Loss(output_new.detach(),labels)
-                factor = ce_local.detach() - ce_new
 
-        return model.parameters(), meme.parameters()
+class LocalMutualAugFix(object):
+    def __init__(self, args, train_loader, train_loader_aug, lr):
+        self.args = args
+        self.loss_func = nn.CrossEntropyLoss()
+        self.train_loader = train_loader
+        self.train_loader_aug = train_loader_aug
+        self.epoch = args.epoch
+        self.lr = lr
+# 接受两个网络互学习，model是本地模型，meme是全局模型
+    def train_mul(self, net1, net2):
+        model = net1
+        meme = net2
+        # optimizer = torch.optim.SGD(model.parameters(), lr=self.lr/10, weight_decay=1e-3, momentum=0.9)
+        meme_optimizer = torch.optim.SGD(meme.parameters(), lr=self.lr, weight_decay=1e-3, momentum=0.9)
+
+        model = model.to(device)
+        meme.train()
+        meme = meme.to(device)
+
+        KL_Loss = nn.KLDivLoss(reduction='batchmean')
+        Softmax = nn.Softmax(dim=1)
+        LogSoftmax = nn.LogSoftmax(dim=1)
+        CE_Loss = nn.CrossEntropyLoss()
+        alpha = 0.9
+        beta = 0.9
+        class_dis_map = {}
+        for e in range(self.epoch):
+            # Training
+            loss_ce_local = []
+            loss_ce_meme = []
+            conl = []
+            cong = []
+            loss_cons = []
+            for idx , (data, aug_data) in enumerate(zip(self.train_loader,self.train_loader_aug)):
+                inputs,labels = data[0],data[1]
+                inputs_aug, labels_aug = aug_data[0], aug_data[1]
+                inputs, labels = inputs.to(device), labels.to(device)
+                inputs_aug = inputs_aug.to(device)
+                # if e == 0:
+                #     con_tool.count_class_dis(class_dis_map, labels)
+                # optimizer.zero_grad()
+                meme_optimizer.zero_grad()
+                reps_local = model.base(inputs)
+                reps_aug = meme.base(inputs_aug)
+
+                output_local = model.head(reps_local)
+                output_meme = meme.head(reps_aug)
+
+
+                # 方式一
+                fs = torch.cat([reps_local,reps_aug])
+                ls = torch.cat([labels,labels]).detach()
+
+                if torch.unique(labels).shape[0] == 1:
+                    sup_con_loss = torch.tensor(0)
+                else:
+                    sup_con_loss = MySupConLoss(fs,ls, 0.5)
+
+                # 方式二
+                # if torch.unique(labels).shape[0] > 1:
+                #     # sup_con_loss_l = MySupConLoss(reps_local,labels, 0.5)
+                #     sup_con_loss_g = MySupConLoss(reps_aug,labels,0.5)
+                #     # conl.append(sup_con_loss_l.item())
+                #     cong.append(sup_con_loss_g.item())
+                #     # kl_l = KL_Loss(LogSoftmax(reps_local), Softmax(reps_aug.detach()))
+                #     kl_g = KL_Loss(LogSoftmax(reps_aug), Softmax(reps_local.detach()))
+                #     sup_con_loss = beta * sup_con_loss_g + (1-beta) *  kl_g
+                #     loss_cons.append(sup_con_loss.item())
+
+                # 蒸馏，互学习
+                # ce_local = CE_Loss(output_local, labels)
+                # kl_local = KL_Loss(LogSoftmax(output_local), Softmax(output_meme.detach()))
+                ce_meme = CE_Loss(output_meme, labels)
+                kl_meme = KL_Loss(LogSoftmax(output_meme), Softmax(output_local.detach()))
+
+                # loss_local = alpha * ce_local + (1 - alpha) * kl_local
+                loss_meme = beta * ce_meme + (1 - beta) * kl_meme
+                loss = loss_meme
+                if torch.unique(labels).shape[0] > 1:
+                    loss += sup_con_loss
+
+                # loss_ce_local.append(ce_local.item())
+                loss_ce_meme.append(ce_meme.item())
+
+                loss.backward()
+                # torch.nn.utils.clip_grad_norm_(model.parameters(), 1e5)
+                torch.nn.utils.clip_grad_norm_(meme.parameters(), 1e5)
+                # optimizer.step()
+                meme_optimizer.step()
+            # if e == 0:
+            #     print(class_dis_map)
+            # print(f"epoch {e} ce_local :{sum(loss_ce_local)/len(loss_ce_local)} ce_meme:{sum(loss_ce_meme)/(len(loss_ce_meme)+0.1)} con_l = {sum(conl)/(len(conl)+0.01)} con_g = {sum(cong)/(len(cong)+0.01)} loss_cons:{sum(loss_cons)/(len(loss_cons)+0.01)}  ")
+
+
+# 增强互学习，教师模型输入加噪的数据，本地客户端使用不加噪的数据，使用上次的CE差值
+class LocalMutualAug2(object):
+    def __init__(self, args, train_set, lr):
+        self.args = args
+        self.loss_func = nn.CrossEntropyLoss()
+        self.train_loader = tool.get_local_loader(args,train_set)
+        self.epoch = args.epoch
+        self.lr = lr
+# 接受两个网络互学习，model是本地模型，meme是全局模型
+    def train_mul(self, net1, net2):
+        model = net1
+        meme = net2
+        optimizer = torch.optim.SGD(model.parameters(), lr=self.lr, weight_decay=1e-3, momentum=0.9)
+        meme_optimizer = torch.optim.SGD(meme.parameters(), lr=self.lr, weight_decay=1e-3, momentum=0.9)
+
+        model.train()
+        model = model.to(device)
+        meme.train()
+        meme = meme.to(device)
+
+        KL_Loss = nn.KLDivLoss(reduction='batchmean')
+        Softmax = nn.Softmax(dim=1)
+        LogSoftmax = nn.LogSoftmax(dim=1)
+        CE_Loss = nn.CrossEntropyLoss()
+        alpha = 0.9
+        beta = 0.9
+
+        for e in range(self.epoch):
+            # loss_list = []
+            # loss_ce_local = []
+            # loss_ce_meme = []
+            # Training
+            for batch_idx, (images, labels) in enumerate(self.train_loader):
+
+                inputs,inputs_aug,labels = images[0].to(device), images[1].to(device), labels.to(device)
+                meme_optimizer.zero_grad()
+
+                output_T = model(inputs)
+                output_S = meme(inputs)
+                output_S_ = meme(inputs_aug)
+
+                kl1 = KL_Loss(LogSoftmax(output_S), Softmax(output_T.detach()))
+                kl2 = KL_Loss(LogSoftmax(output_S_), Softmax(output_T.detach()))
+
+                loss = kl1 + kl2
+                loss.backward()
+                # optimizer.step()
+                meme_optimizer.step()
+            # print(f"epoch {e} loss :{sum(loss_list)/len(loss_list)} ce_local={sum(loss_ce_local)/len(loss_ce_local)} ce_meme = {sum(loss_ce_meme)/len(loss_ce_meme)}")
 
 
 # 增强互学习，教师模型输入加噪的数据，本地客户端使用不加噪的数据，下一个epoch中添加上一个epoch中预测错的数据，再训练

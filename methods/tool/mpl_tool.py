@@ -233,9 +233,20 @@ class AverageMeter(object):
 def get_train_set_aug(args):
     path = f"{args.data_path}/{args.dataset}"
     # 如果是有标签数据集
-    transform = transforms.Compose([transforms.ToTensor(),
-                                    transforms.Normalize(mean=cifar10_mean, std=cifar10_std)])
+    # transform = transforms.Compose([transforms.ToTensor(),
+    #                                 transforms.Normalize(mean=cifar10_mean, std=cifar10_std)])
     transform_aug = T.Compose([
+        transforms.RandomResizedCrop(size=args.resize, scale=(0.2, 1.)),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomApply([
+            transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)
+        ], p=0.8),
+        transforms.RandomGrayscale(p=0.2),
+        T.ToTensor(),
+        T.Normalize(mean=cifar10_mean, std=cifar10_std),
+    ])
+
+    transform_aug2 = T.Compose([
         T.RandomHorizontalFlip(),  # 旋转和翻转
         T.RandomCrop(size=args.resize,
                      padding=int(args.resize * 0.125),
@@ -244,8 +255,10 @@ def get_train_set_aug(args):
         T.ToTensor(),
         T.Normalize(mean=cifar10_mean, std=cifar10_std),
     ])
+
+
     train_set = torchvision.datasets.CIFAR10(root=path,
-                                             train=True, download=True, transform=transform)
+                                             train=True, download=True, transform=transform_aug)
     train_set_aug = torchvision.datasets.CIFAR10(root=path,
                                                  train=True, download=True, transform=transform_aug)
     return train_set, train_set_aug
@@ -335,3 +348,4 @@ class MyTensorDataset(Dataset):
 
     def __len__(self):
         return self.data_tensor.size(0)
+

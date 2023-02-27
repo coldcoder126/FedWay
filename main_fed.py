@@ -6,7 +6,8 @@ import datetime
 
 import torchvision
 import torchvision.transforms as transforms
-from methods.frame import fedavg,fedavg2,fedavg3,fed_con, fed_mutual, fed_ring, fed_oneway, fed_mpl, fed_mutual_aug, fed_mutual_aug2, fed_prox, fed_mul_aug2_1
+from methods.frame import fedavg,fedavg2,fedavg3,fed_con, fed_mutual_aug_supcon, fed_mutual, fed_ring, fed_oneway, fed_mpl, fed_mutual_aug, fed_mutual_aug2, fed_mutual_fix, fed_prox, fed_mul_aug2_1, pre_train
+from methods.tool import tool
 from utils import split
 
 OPTIMIZERS = ['fedavg', "fed_mutual"]
@@ -60,73 +61,41 @@ def read_options():
 def run_fed():
     args = read_options()
 
-    # 加载数据集和划分数据
-    train_set, test_set = load_loader(args)
+
 
     # 划分数据，如果划分过就直接从文件加载
     alpha = args.alpha
 
+    # 加载原始数据集和测试集
+    train_set, test_set = tool.get_data_set(args,True)
     part_data = split.dirichlet_part(args=args, trainset=train_set, alpha=alpha)
 
-    fed_con.fed_con(args,train_set,test_set,part_data)
+    # train_set, test_set = tool.get_data_set(args,True)
+    # pre_train.train_and_save(args,train_set,part_data)
+
+    fedavg.fedavg(args,  part_data)
+    fed_mutual.fed_mutual(args, train_set, test_set, part_data)
+    fed_prox.fedprox(args,train_set, test_set,part_data)
+    # fed_mutual_aug.fed_mutual(args,test_set,part_data)
+    fed_mutual_aug2.fed_mutual(args, part_data)
+
+
+
+
+    # fed_con.fed_con(args,train_set,test_set,part_data)
+    # fed_mutual_aug_supcon.fed_mutual(args,test_set,part_data)
+    # fed_mutual_fix.fed_mutual(args,test_set,part_data)
     # fedavg.fedavg(args, train_set, test_set, part_data)
     # fedavg2.fedavg(args, train_set, test_set, part_data)
     # fedavg3.fedavg(args, train_set, test_set, part_data)
-
     # fed_mutual.fed_mutual(args, train_set, test_set, part_data)
-    # fed_mutual_aug.fed_mutual(args,test_set,part_data)
-    fed_mul_aug2_1.fed_mutual(args,test_set,part_data)
-    # fed_mutual_aug2.fed_mutual(args,test_set,part_data)
+    fed_mutual_aug.fed_mutual(args,test_set,part_data)
+    # fed_mul_aug2_1.fed_mutual(args,test_set,part_data)
+    # fed_mutual_aug2.fed_mutual(args,train_set, test_set,part_data)
     # fed_ring.fed_ring(args,train_set,test_set,part_data)
     # fed_oneway.fed_oneway(args, train_set, test_set, part_data)
     # fed_mpl.fed_mpl(args, test_set, part_data)
     # fed_prox.fedprox(args,train_set, test_set,part_data)
-
-
-def load_loader(args):
-    path = f"{args.data_path}/{args.dataset}"
-    if args.dataset == "mnist":
-        train_set = torchvision.datasets.MNIST(path, train=True, download=True,
-                                               transform=torchvision.transforms.Compose([
-                                                   torchvision.transforms.ToTensor(),
-                                                   torchvision.transforms.Normalize(
-                                                       (0.1307,), (0.3081,))
-                                               ]))
-        test_set = torchvision.datasets.MNIST(path, train=False, download=True,
-                                              transform=torchvision.transforms.Compose([
-                                                  torchvision.transforms.ToTensor(),
-                                                  torchvision.transforms.Normalize(
-                                                      (0.1307,), (0.3081,))
-                                              ]))
-        return train_set, test_set
-    if args.dataset == "cifar10":
-        transform = transforms.Compose([transforms.ToTensor(),
-                                        transforms.Normalize(mean=[0.491, 0.482, 0.447], std=[0.247, 0.243, 0.262])])
-
-        train_set = torchvision.datasets.CIFAR10(root=path,
-                                                 train=True, download=True, transform=transform)
-        test_set = torchvision.datasets.CIFAR10(root=path,
-                                                train=False, download=True, transform=transform)
-        return train_set, test_set
-
-    if args.dataset == "cifar100":
-        transform = transforms.Compose([transforms.ToTensor(),
-                                        transforms.Normalize(mean=[0.507, 0.486, 0.440], std=[0.267, 0.256, 0.276])])
-
-        train_set = torchvision.datasets.CIFAR100(root=path,
-                                                  train=True, download=True, transform=transform)
-        test_set = torchvision.datasets.CIFAR100(root=path,
-                                                 train=False, download=True, transform=transform)
-        return train_set, test_set
-    if args.dataset == 'svhn':
-        transform = transforms.Compose([transforms.ToTensor(),
-                                        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
-        train_set = torchvision.datasets.SVHN(root=path,
-                                              split='train', download=True, transform=transform)
-        test_set = torchvision.datasets.SVHN(root=path,
-                                             split='test', download=True, transform=transform)
-        return train_set, test_set
-
 
 if __name__ == "__main__":
     run_fed()

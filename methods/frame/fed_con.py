@@ -15,6 +15,7 @@ import torch
 from tensorboardX import SummaryWriter
 import numpy as np
 from torch import nn
+from torch.optim import lr_scheduler
 from torch.utils.data import Subset, DataLoader
 from methods.client.local_train import LocalTrain
 import src.models.model as md
@@ -56,17 +57,20 @@ def fed_con(args, trainset, testset, part_data):
     server_encoder = SupConResNet('resnet18')
     server_encoder = server_encoder.to(device)
     server_classifier = LinearClassifier()
-    server_optimizer = torch.optim.SGD(server_encoder.parameters(), lr=0.1, weight_decay=1e-3, momentum=0.5)
+    server_optimizer = torch.optim.SGD(server_encoder.parameters(), lr=0.1, weight_decay=1e-3, momentum=0.9)
+    server_scheduler = lr_scheduler.StepLR(server_optimizer, step_size=10, gamma=0.8)
     criteria = Contrastive_loss_batch(0.7)
     reps=None
-    for e in range(30):
+    for e in range(3):
         for batch_idx, (inputs, labels) in enumerate(server_sample_loader):
             inputs, labels = inputs.to(device), labels.to(device)
             server_optimizer.zero_grad()
             reps = server_encoder(inputs)
             loss = criteria(reps,labels)
+            print(f" epoch-{e} server loss = {loss.item()}")
             loss.backward()
             server_optimizer.step()
+        server_scheduler.step()
     server_reps_map = {idx.item():reps[idx] for idx in labels[:10]}
     con_tool.server_sim_test(server_reps_map)
 
@@ -81,10 +85,12 @@ def fed_con(args, trainset, testset, part_data):
         # 每轮随机选择部分客户端
         np.random.seed(item)
         idx_client = np.random.choice(range(args.client_num), args.clients_per_round, replace=False)
-        classifier_condition = (item >= 0)
+        classifier_condition = (item >= 1)
         for k in idx_client:
             local_data_loader = train_loaders[k]
             client_data_num.append(local_data_loader.sampler.num_samples)
+            # shuffle=False
+            #client_data_num.append(local_data_loader.sampler.data_source.indices.size)
             local_encoder = copy.deepcopy(server_encoder)
 
             # 对encoder进行训练
@@ -97,7 +103,7 @@ def fed_con(args, trainset, testset, part_data):
                 local_classifier = copy.deepcopy(server_classifier)
                 client_classifiers[k] = client.train_classifier(local_classifier)
         if not classifier_condition: #聚合anchor和encoder
-            con_tool.anchor_avg(idx_client,client_reps_anchor,server_reps_map)
+            con_tool.anchor_avg(idx_client,client_reps_anchor,server_reps_map,client_data_num)
             con_tool.net_avg(idx_client,client_encoders,server_encoder,client_data_num)
         else: # 固定encoder 聚合classifier
             con_tool.net_avg(idx_client,client_classifiers,server_classifier,client_data_num)

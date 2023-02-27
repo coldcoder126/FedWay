@@ -8,6 +8,7 @@
 .idea/
 test/
 data/
+saved_models/
 
 # Dependency directories (remove the comment below to include it)
 # vendor/

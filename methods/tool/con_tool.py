@@ -78,29 +78,31 @@ def set_loader(args,part_data):
     else:
         raise ValueError(args.dataset)
 
-    train_sampler = None
     train_loaders = [DataLoader(
         Subset(train_dataset, part_data.client_dict[i]),
-        batch_size=args.batch_size, shuffle=(train_sampler is None),
-        num_workers=args.num_workers, pin_memory=True, sampler=train_sampler) for i in range(args.client_num)]
+        batch_size=args.batch_size, shuffle=True,
+        num_workers=args.num_workers) for i in range(args.client_num)]
 
     return train_loaders
 
 
-def anchor_avg(idx_client, client_reps_anchor,server_reps_anchor):
+
+def anchor_avg(idx_client, client_reps_anchor,server_reps_anchor,client_data_num):
     label_dic = {}
+    count = sum(client_data_num)
+    rate = [ i/count for i in client_data_num]
     dics = [client_reps_anchor[idx] for idx in idx_client]
-    for dic in dics:
-        for k in dic.keys():
-            label_dic[k] = label_dic.get(k,[])+[dic[k]]
+    for i in range(len(dics)):
+        for k in dics[i].keys():
+            label_dic[k] = label_dic.get(k,[])+[dics[i][k]*rate[i]]
     for k in label_dic.keys():
         # 在此之前，看下每个客户端同类anchor之间的余弦相似
         cos_sim = nn.CosineSimilarity(dim=0,eps=1e-6)
         if len(label_dic[k]) > 1:
             sim = cos_sim(label_dic[k][0],label_dic[k][1])
-            print(f"label:{k} sim:{sim}")
+            print(f"diff client label:{k} sim:{sim}")
         fs = torch.stack(label_dic[k])
-        fs_mean = fs.mean(dim=0)
+        fs_mean = fs.sum(dim=0)
         server_reps_anchor[k] = (server_reps_anchor[k] + fs_mean)/2
 
 # def encoder_avg(idx_client, client_encoders, server_encoder,client_data_num):
@@ -108,16 +110,47 @@ def anchor_avg(idx_client, client_reps_anchor,server_reps_anchor):
 #      param_avg = tool.aggregate_avg(encoder_param,client_data_num)
 #      tool.set_flat_params_to(server_encoder,param_avg)
 
-# 聚合非bn参数
 def net_avg(idx_client, client_nets, server_net,client_data_num):
+    server_net = server_net.to(device)
+    # server_device = next(server_net.parameters()).is_cuda
+    # print(f"server-device {server_device}")
     encoders = [client_nets[i] for i in idx_client]
+    # for i in encoders:
+    #     print(f"encoder-device {next(i.parameters()).is_cuda}")
     count = sum(client_data_num)
     rate = [ i/count for i in client_data_num]
     keys = [k for k in encoders[0].state_dict() if (k.find('bn')==-1 and k.find('num')==-1)]
     for k in keys:
         l = [encoders[i].state_dict()[k] * rate[i]  for i in range(len(encoders))]
-        param = torch.stack(l).sum(dim=0)
+        param = torch.stack(l).sum(dim=0).to(device)
         server_net.state_dict()[k].copy_((param+server_net.state_dict()[k])/2)
+    return server_net
+
+
+# 聚合非bn参数
+def nets_avg(idx_client, client_nets, server_net,client_data_num):
+
+    server_device = next(server_net.parameters()).is_cuda
+    print(f"server-device {server_device}")
+    count = sum(client_data_num)
+    rate = [ i/count for i in client_data_num]
+
+    encoders = [client_nets[i].base for i in idx_client]
+    heads = [client_nets[i].base for i in idx_client]
+    # for i in range(len(encoders)):
+    #     c_d = next(encoders[i].parameters()).is_cuda
+    #     print(c_d)
+    keys_en = [k for k in encoders[0].state_dict() if (k.find('bn')==-1 and k.find('num')==-1)]
+    keys_hd = [k for k in heads[0].state_dict() if (k.find('bn')==-1 and k.find('num')==-1)]
+    for k in keys_en:
+        l = [encoders[i].state_dict()[k] * rate[i]  for i in range(len(encoders))]
+        param = torch.stack(l).sum(dim=0)
+        server_net.base.state_dict()[k].copy_((param+server_net.state_dict()[k])/2)
+
+    for k in keys_en:
+        l = [encoders[i].state_dict()[k] * rate[i]  for i in range(len(encoders))]
+        param = torch.stack(l).sum(dim=0)
+        server_net.head.state_dict()[k].copy_((param+server_net.state_dict()[k])/2)
     return server_net
 
 
@@ -150,3 +183,27 @@ def server_sim_test(server_rep_map):
             sim = cos_fun(rep[i],rep[j])
             res.append(sim.item())
         print(f"第{i}个和其他 :{res}")
+
+def collect_reps_by_class(reps_list_map, features, labels):
+    f = features.detach()
+    labels_uni = torch.unique(labels).detach()
+    labelss = torch.cat([labels, labels])
+    for l in labels_uni:
+        k = l.item()
+        if k in reps_list_map.keys():
+            reps_list_map[k].append(f[labelss == k].mean(dim=0))
+        else:
+            reps_list_map[k] = [f[labelss == k].mean(dim=0)]
+    return reps_list_map
+
+def cliemt_sim_check(reps,anchors):
+    reps_map = { kv[0]:torch.stack(list(kv[1])).mean(dim=0) for kv in reps.items()}
+    cos_fun = nn.CosineSimilarity(dim=0, eps=1e-6)
+    for k in reps_map.keys():
+        cos_sim = cos_fun(reps_map[k], anchors[k])
+        print(f"avg/server anchor: label {k} cos_sim={cos_sim}")
+    return reps_map
+
+def count_class_dis(class_count_map, labels):
+    for i in range(10):
+        class_count_map[i] = class_count_map.get(i,0) + (labels==i).sum().item()

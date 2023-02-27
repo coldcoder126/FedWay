@@ -8,7 +8,12 @@ import sys
 
 import torch
 import numpy as np
+import torchvision
 from torch.optim.lr_scheduler import LambdaLR
+from torch.utils.data import Dataset, DataLoader
+from torchvision.transforms import transforms
+
+from methods.tool.augmentation import RandAugmentCIFAR
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -26,6 +31,7 @@ def get_flat_params_from(parameters):
 # 更新模型中的参数
 def set_flat_params_to(model, flat_params):
     prev_ind = 0
+    model = model.to(device)
     for param in model.parameters():
         flat_size = int(np.prod(list(param.size())))
         param.data.copy_(
@@ -39,6 +45,15 @@ def set_flat_params_custom(model, flat_params,percent):
         param.data.copy_(
             flat_params[prev_ind:prev_ind + flat_size].view(param.size()) * percent + param.data * (1-percent) )
         prev_ind += flat_size
+
+# def net_avg(net1,nets,rate):
+#     keys = [k for k in net1[0].state_dict() if (k.find('bn') == -1 and k.find('num') == -1)]
+#     for k in keys:
+#         l = [net1.state_dict()[k] * rate for i in range(len(encoders))]
+#         param = torch.stack(l).sum(dim=0)
+#         server_net.state_dict()[k].copy_((param + server_net.state_dict()[k]) / 2)
+
+
 
 # 更新模型的指定层参数
 def set_layer_to_model(args,layer_tensor, model):
@@ -84,13 +99,153 @@ def global_test(model, test_loader):
     return acc
 
 
-def getLr(args, cur_round):
-    factor = 2 ** math.floor(cur_round / 10)
-    lr = args.lr / factor
-    if lr < 0.001:
-        lr = 0.001
-    print(f"---Round:{cur_round},lr={lr} ---")
+def getLr(lr, cur_round):
+    if cur_round%10==0:
+        lr = lr * 0.8
+    if lr < 0.0001:
+        lr = 0.0001
     return lr
+
+def get_model_path(args,idx):
+    net_name = args.model
+    dataset_name = args.dataset
+    client_num = args.client_num
+    seed = args.seed
+    alpha = args.alpha
+    model_path = f'saved_models/{dataset_name}/{net_name}'
+    if not os.path.exists(model_path):
+        os.makedirs(model_path)
+    model_path = f'saved_models/{dataset_name}/{net_name}/client{idx}-{client_num}-{seed}-'+str(alpha).replace('.','_')+'.pth'
+    return model_path
+
+# ----------------处理 data_set和data_loader 的类和方法---------------
+
+mean_cifar10 = (0.491, 0.482, 0.446)
+std_cifar10 = (0.202, 0.199, 0.201)
+mean_cifar100 = (0.507, 0.486, 0.440)
+std_cifar100 = (0.267, 0.256, 0.276)
+mean_svhn = (0.485, 0.456, 0.406)
+std_svhn = (0.229, 0.224, 0.225)
+
+
+def get_data_set(args,trans=False):
+    path = f"{args.data_path}/{args.dataset}"
+    if args.dataset == "mnist":
+        train_set = torchvision.datasets.MNIST(path, train=True, download=True,
+                                               transform=torchvision.transforms.Compose([
+                                                   torchvision.transforms.ToTensor(),
+                                                   torchvision.transforms.Normalize(
+                                                       (0.1307,), (0.3081,))
+                                               ]))
+        test_set = torchvision.datasets.MNIST(path, train=False, download=True,
+                                              transform=torchvision.transforms.Compose([
+                                                  torchvision.transforms.ToTensor(),
+                                                  torchvision.transforms.Normalize(
+                                                      (0.1307,), (0.3081,))
+                                              ]))
+        return train_set, test_set
+    if args.dataset == "cifar10":
+        transform = transforms.Compose([transforms.ToTensor(),
+                                        transforms.Normalize(mean=mean_cifar10, std=std_cifar10)])
+        if trans:
+            train_set = torchvision.datasets.CIFAR10(root=path,train=True, download=True,transform=transform)
+        else:
+            train_set = torchvision.datasets.CIFAR10(root=path,train=True, download=True)
+        test_set = torchvision.datasets.CIFAR10(root=path,train=False, download=True, transform=transform)
+        return train_set, test_set
+
+    if args.dataset == "cifar100":
+        transform = transforms.Compose([transforms.ToTensor(),
+                                        transforms.Normalize(mean=mean_cifar100, std=std_cifar100)])
+        if trans:
+            train_set = torchvision.datasets.CIFAR100(root=path,train=True, download=True, transform=transform)
+        else:
+            train_set = torchvision.datasets.CIFAR100(root=path, train=True, download=True)
+        test_set = torchvision.datasets.CIFAR100(root=path,train=False, download=True, transform=transform)
+        return train_set, test_set
+    if args.dataset == 'svhn':
+        transform = transforms.Compose([transforms.ToTensor(),transforms.Normalize(mean=mean_svhn, std=std_svhn)])
+        if trans:
+            train_set = torchvision.datasets.SVHN(root=path,split='train', download=True, transform=transform)
+        else:
+            train_set = torchvision.datasets.SVHN(root=path, split='train', download=True)
+        test_set = torchvision.datasets.SVHN(root=path,split='test', download=True, transform=transform)
+        return train_set, test_set
+
+class MyDataset(Dataset):
+    def __init__(self, subset, transform=None):
+        self.subset = subset
+        self.transform = transform
+
+    def __getitem__(self, index):
+        x, y = self.subset[index]
+        if self.transform:
+            x = self.transform(x)
+        return x, y
+
+    def __len__(self):
+        return len(self.subset)
+
+class TwoTransforms:
+    """Create two crops of the same image"""
+    def __init__(self, transform1,transform2):
+        self.transform1 = transform1
+        self.transform2 = transform2
+
+    def __call__(self, x):
+        return [self.transform1(x), self.transform2(x)]
+
+# 放入subset，生成原始数据和随机增强的数据
+def get_local_loader(args,train_set):
+    # construct data loader
+    if args.dataset == 'cifar10':
+        mean = mean_cifar10
+        std = std_cifar10
+    elif args.dataset == 'cifar100':
+        mean = mean_cifar100
+        std = std_cifar100
+    elif args.dataset == 'path':
+        mean = eval(args.mean)
+        std = eval(args.std)
+    else:
+        raise ValueError('dataset not supported: {}'.format(args.dataset))
+    normalize = transforms.Normalize(mean=mean, std=std)
+
+    ori_transform = transforms.Compose([transforms.ToTensor(), normalize])
+
+    aug_transform = transforms.Compose([
+        transforms.RandomResizedCrop(size=args.resize, scale=(0.2, 1.)),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomApply([
+            transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)
+        ], p=0.8),
+        transforms.RandomGrayscale(p=0.2),
+        transforms.ToTensor(),
+        normalize,
+    ])
+
+    mpl_transform = transforms.Compose([
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomCrop(size=32,
+                         padding=int(32 * 0.125),
+                         fill=128,
+                         padding_mode='constant'),
+            RandAugmentCIFAR(n=2, m=10),
+            transforms.ToTensor(),
+            normalize])
+
+    if args.dataset == 'cifar10':
+        train_dataset = MyDataset(train_set,transform=TwoTransforms(ori_transform,mpl_transform))
+        # train_dataset = datasets.CIFAR10(root=path,
+        #                                  transform=TwoTransforms(train_transform),
+        #                                  download=True)
+    elif args.dataset == 'cifar100':
+        train_dataset = MyDataset(train_set,transform=TwoTransforms(ori_transform,mpl_transform))
+    else:
+        raise ValueError(args.dataset)
+
+    train_loader = DataLoader(train_dataset,batch_size=args.batch_size, shuffle=True,num_workers=args.num_workers,drop_last=True)
+    return train_loader
 
 
 # 对模型进行聚合

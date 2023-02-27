@@ -5,7 +5,8 @@ import torch
 from torch import nn
 from torch.optim import lr_scheduler
 
-from src.optimizer.loss_con import SupConLoss, CosLoss
+from methods.tool import con_tool
+from src.optimizer.loss_con import SupConLoss, CosLoss, SupConAnchorLoss, SupConNceLoss,MySupConLoss
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 class ClientCon(object):
@@ -22,38 +23,47 @@ class ClientCon(object):
         optimizer = torch.optim.SGD(encoder.parameters(), self.lr, weight_decay=1e-3, momentum=0.9)
         scheduler = lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.8)
         encoder.train()
-        criterion = SupConLoss(temperature=self.args.temp)
+
         criterion2 = CosLoss()
-        reps_map = {}
-        for epoch in range(self.args.epoch):
+        reps_list_map = {}  # key:label， val:list[tensor]
+        class_dis_map = {}
+        for epoch in range(3):
+            con_loss_list = []
+            cos_loss_list = []
             for batch_idx, (images, labels) in enumerate(self.train_loader):
                 images = torch.cat([images[0], images[1]], dim=0)
                 images, labels = images.to(device), labels.to(device)
-                bsz = labels.shape[0]
-                features = encoder(images)
-                f1, f2 = torch.split(features, [bsz, bsz], dim=0)
-                if epoch == self.args.epoch-1:
-                    f = (f1+f2)/2
-                    labels_u = torch.unique(labels)
-                    f_s = {i.item():[f[labels==i].mean(dim=0)] for i in labels_u}
-                    temp_map = {k:f_s[k]+reps_map.get(k,[]) for k in f_s.keys()}
-                    reps_map = temp_map
-                features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
-                con_loss = criterion(features, labels)
-                cos_loss = criterion2(features,labels,self.anchor)
-                # print(f"epoch{epoch} b-idx {batch_idx} con_loss = {con_loss.item()} cos_loss={cos_loss.item()}  ")
-                loss = cos_loss + con_loss
+                features = encoder(images).to(device)
+                con_loss = MySupConLoss(features,torch.cat([labels,labels]),0.5)
+                # bsz = labels.shape[0]
+                # f1, f2 = torch.split(features, [bsz, bsz], dim=0)
+                # features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
+                # con_tool.collect_reps_by_class(reps_list_map,features,labels)
+                # con_loss = criterion(features, labels)
+                # cos_loss = criterion2(features,labels,self.anchor)
+                con_loss_list.append(con_loss.item())
+                # cos_loss_list.append(cos_loss.item())
+                loss =  con_loss
                 loss.backward()
                 optimizer.step()
+                if epoch == 0:
+                    con_tool.count_class_dis(class_dis_map,labels)
             scheduler.step()
-        # 训练完成之后，计算每个类表示的均值，并和encoder一同上传到server
-        final_reps = {k:torch.stack(reps_map.get(k)).mean(dim=0) for k in reps_map.keys()}
+            print(f"epoch{epoch} lr = {optimizer.param_groups[0]['lr']} con_loss = {sum(con_loss_list)/len(con_loss_list)} cos_loss={sum(cos_loss_list)/len(cos_loss_list)}  ")
+            if epoch == 1:
+                print(class_dis_map)
+            if epoch %2==0:
+                reps_map = con_tool.cliemt_sim_check(reps_list_map, self.anchor)
         # 训练完成后，看下平均reps和anchor之间的相似度
-        for k in final_reps.keys():
-            cos_fun = nn.CosineSimilarity(dim=0,eps=1e-6)
-            cos_sim = cos_fun(final_reps[k],self.anchor[k])
-            print(f"平均label {k} cos_sim={cos_sim}")
-        return encoder, final_reps
+        reps_map = con_tool.cliemt_sim_check(reps_list_map, self.anchor)
+        return encoder, reps_map
+
+    def train_encoder_with_anchor(self):
+        encoder = self.encoder.to(device)
+        optimizer = torch.optim.SGD(encoder.parameters(), self.lr, weight_decay=1e-3, momentum=0.9)
+        scheduler = lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.8)
+        encoder.train()
+
 
     def train_classifier(self,classifier):
         encoder = self.encoder.to(device)
