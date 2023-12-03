@@ -18,7 +18,9 @@ from src.optimizer.loss_mul import dkd_loss
 from methods.tool import con_tool
 import methods.tool.tool as tool
 from src.optimizer.loss_rslad import rslad_inner_loss
-
+from methods.tool.mas_tool import *
+from avalanche.benchmarks.generators import ni_benchmark
+from avalanche.training.supervised import MAS
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
@@ -81,9 +83,8 @@ class LocalTrain(object):
             per_loss = sum(per_epoch_loss) / len(per_epoch_loss)
             epoch_loss.append(per_loss)
             data_sum = self.train_loader.dataset.indices.size
-            acc = err_local_count /data_sum
+            acc = err_local_count / data_sum
         return net, acc
-
 
     def train_prox(self, net):
         global_net = copy.deepcopy(net)
@@ -98,12 +99,13 @@ class LocalTrain(object):
                 inputs, labels = inputs.to(device), labels.to(device)
                 optimizer.zero_grad()
                 prediction = net(inputs)
-                loss = self.loss_func(prediction,labels)
+                loss = self.loss_func(prediction, labels)
 
                 # for fedprox
                 fed_prox_reg = 0.0
                 for param_index, param in enumerate(net.parameters()):
-                    fed_prox_reg += ((self.args.mu / 2) * torch.norm((param - global_weight_collector[param_index])) ** 2)
+                    fed_prox_reg += (
+                                (self.args.mu / 2) * torch.norm((param - global_weight_collector[param_index])) ** 2)
                 loss += fed_prox_reg
                 per_epoch_loss.append(loss.item())
                 loss.backward()
@@ -147,11 +149,10 @@ class LocalTrain(object):
         net_para = net.state_dict()
         for key in net_para:
             c_new_para[key] = c_new_para[key] - c_global_para[key] + (global_model_para[key] - net_para[key]) / (
-                        cnt * self.lr)
+                    cnt * self.lr)
             c_delta_para[key] = c_new_para[key] - c_local_para[key]
         net.load_state_dict(c_new_para)
         return net.parameters(), sum(epoch_loss) / len(epoch_loss), c_delta_para
-
 
     # 接受两个网络互学习，model是本地模型，meme是全局模型
     def train_mul(self, net1, net2):
@@ -187,7 +188,6 @@ class LocalTrain(object):
                 ce_meme = CE_Loss(output_meme, labels)
                 kl_meme = KL_Loss(LogSoftmax(output_meme), Softmax(output_local.detach()))
 
-
                 loss_local = alpha * ce_local + (1 - alpha) * kl_local
                 loss_meme = beta * ce_meme + (1 - beta) * kl_meme
                 loss = loss_local + loss_meme
@@ -198,6 +198,47 @@ class LocalTrain(object):
                 optimizer.step()
                 meme_optimizer.step()
 
+
+class LocalTrainMAS(object):
+    def __init__(self, args, train_set, lr):
+        self.args = args
+        self.loss_func = nn.CrossEntropyLoss()
+        self.train_set = train_set
+        self.epoch = args.epoch
+        self.lr = lr
+
+    def train(self, net):
+        scenario = ni_benchmark(
+            self.train_set, self.train_set, n_experiences=10, shuffle=True, seed=1234,
+            balance_experiences=True
+        )
+
+        train_stream = scenario.train_stream
+
+        for experience in train_stream:
+            t = experience.task_label
+            exp_id = experience.current_experience
+            training_dataset = experience.dataset
+            # print('Task {} batch {} -> train'.format(t, exp_id))
+            # print('This batch contains', len(training_dataset), 'patterns')
+
+        optimizer = torch.optim.SGD(net.parameters(), lr=self.lr, weight_decay=1e-3, momentum=0.9)
+        cl_strategy = MAS(
+            net,
+            optimizer,
+            self.loss_func,
+            train_mb_size=64,
+            train_epochs=self.epoch,
+            eval_mb_size=32,
+            device=device,
+            evaluator = None
+        )
+        for train_task in train_stream:
+            # print("Current Classes: ", train_task.classes_in_this_experience)
+            cl_strategy.train(train_task)
+        return net, 0
+
+
 # 增强互学习，教师模型输入加噪的数据，本地客户端使用不加噪的数据
 class LocalMutualAug(object):
     def __init__(self, args, train_loader, train_loader_aug, lr):
@@ -207,7 +248,8 @@ class LocalMutualAug(object):
         self.train_loader_aug = train_loader_aug
         self.epoch = args.epoch
         self.lr = lr
-# 接受两个网络互学习，model是本地模型，meme是全局模型
+
+    # 接受两个网络互学习，model是本地模型，meme是全局模型
     def train_mul(self, net1, net2):
         model = net1
         meme = net2
@@ -231,8 +273,8 @@ class LocalMutualAug(object):
             # loss_ce_local = []
             # loss_ce_meme = []
             # Training
-            for idx , (data, aug_data) in enumerate(zip(self.train_loader,self.train_loader_aug)):
-                inputs,labels = data[0],data[1]
+            for idx, (data, aug_data) in enumerate(zip(self.train_loader, self.train_loader_aug)):
+                inputs, labels = data[0], data[1]
                 inputs_aug, labels_aug = aug_data[0], aug_data[1]
                 inputs, labels = inputs.to(device), labels.to(device)
                 inputs_aug = inputs_aug.to(device)
@@ -260,7 +302,7 @@ class LocalMutualAug(object):
                 output_T = model(inputs)
                 epsilon = 8 / 255.0
                 output_S_ = rslad_inner_loss(meme, output_T, inputs, labels, meme_optimizer,
-                                              step_size=2 / 255.0, epsilon=epsilon, perturb_steps=10)
+                                             step_size=2 / 255.0, epsilon=epsilon, perturb_steps=10)
                 output_S = meme(inputs)
                 # output_S_ = meme(inputs_aug)
 
@@ -273,6 +315,7 @@ class LocalMutualAug(object):
                 meme_optimizer.step()
             # print(f"epoch {e} loss :{sum(loss_list)/len(loss_list)} ce_local={sum(loss_ce_local)/len(loss_ce_local)} ce_meme = {sum(loss_ce_meme)/len(loss_ce_meme)}")
 
+
 class LocalMutualAugCon(object):
     def __init__(self, args, train_loader, train_loader_aug, lr):
         self.args = args
@@ -281,7 +324,8 @@ class LocalMutualAugCon(object):
         self.train_loader_aug = train_loader_aug
         self.epoch = args.epoch
         self.lr = lr
-# 接受两个网络互学习，model是本地模型，meme是全局模型
+
+    # 接受两个网络互学习，model是本地模型，meme是全局模型
     def train_mul(self, net1, net2):
         model = net1
         meme = net2
@@ -307,8 +351,8 @@ class LocalMutualAugCon(object):
             conl = []
             cong = []
             loss_cons = []
-            for idx , (data, aug_data) in enumerate(zip(self.train_loader,self.train_loader_aug)):
-                inputs,labels = data[0],data[1]
+            for idx, (data, aug_data) in enumerate(zip(self.train_loader, self.train_loader_aug)):
+                inputs, labels = data[0], data[1]
                 inputs_aug, labels_aug = aug_data[0], aug_data[1]
                 inputs, labels = inputs.to(device), labels.to(device)
                 inputs_aug = inputs_aug.to(device)
@@ -333,13 +377,13 @@ class LocalMutualAugCon(object):
 
                 # 方式二
                 if torch.unique(labels).shape[0] > 1:
-                    sup_con_loss_l = MySupConLoss(reps_local,labels, 0.5)
-                    sup_con_loss_g = MySupConLoss(reps_aug,labels,0.5)
+                    sup_con_loss_l = MySupConLoss(reps_local, labels, 0.5)
+                    sup_con_loss_g = MySupConLoss(reps_aug, labels, 0.5)
                     conl.append(sup_con_loss_l.item())
                     cong.append(sup_con_loss_g.item())
                     kl_l = KL_Loss(LogSoftmax(reps_local), Softmax(reps_aug.detach()))
                     kl_g = KL_Loss(LogSoftmax(reps_aug), Softmax(reps_local.detach()))
-                    sup_con_loss = sup_con_loss_l+sup_con_loss_g + (1-alpha) * (kl_l + kl_g)
+                    sup_con_loss = sup_con_loss_l + sup_con_loss_g + (1 - alpha) * (kl_l + kl_g)
                     loss_cons.append(sup_con_loss.item())
 
                 # 蒸馏，互学习
@@ -364,7 +408,8 @@ class LocalMutualAugCon(object):
                 meme_optimizer.step()
             if e == 0:
                 print(class_dis_map)
-            print(f"epoch {e} ce_local :{sum(loss_ce_local)/len(loss_ce_local)} ce_meme:{sum(loss_ce_meme)/(len(loss_ce_meme)+0.1)} con_l = {sum(conl)/(len(conl)+0.01)} con_g = {sum(cong)/(len(cong)+0.01)} loss_cons:{sum(loss_cons)/(len(loss_cons)+0.01)}  ")
+            print(
+                f"epoch {e} ce_local :{sum(loss_ce_local) / len(loss_ce_local)} ce_meme:{sum(loss_ce_meme) / (len(loss_ce_meme) + 0.1)} con_l = {sum(conl) / (len(conl) + 0.01)} con_g = {sum(cong) / (len(cong) + 0.01)} loss_cons:{sum(loss_cons) / (len(loss_cons) + 0.01)}  ")
 
 
 class LocalMutualAugFix(object):
@@ -375,7 +420,8 @@ class LocalMutualAugFix(object):
         self.train_loader_aug = train_loader_aug
         self.epoch = args.epoch
         self.lr = lr
-# 接受两个网络互学习，model是本地模型，meme是全局模型
+
+    # 接受两个网络互学习，model是本地模型，meme是全局模型
     def train_mul(self, net1, net2):
         model = net1
         meme = net2
@@ -400,8 +446,8 @@ class LocalMutualAugFix(object):
             conl = []
             cong = []
             loss_cons = []
-            for idx , (data, aug_data) in enumerate(zip(self.train_loader,self.train_loader_aug)):
-                inputs,labels = data[0],data[1]
+            for idx, (data, aug_data) in enumerate(zip(self.train_loader, self.train_loader_aug)):
+                inputs, labels = data[0], data[1]
                 inputs_aug, labels_aug = aug_data[0], aug_data[1]
                 inputs, labels = inputs.to(device), labels.to(device)
                 inputs_aug = inputs_aug.to(device)
@@ -415,15 +461,14 @@ class LocalMutualAugFix(object):
                 output_local = model.head(reps_local)
                 output_meme = meme.head(reps_aug)
 
-
                 # 方式一
-                fs = torch.cat([reps_local,reps_aug])
-                ls = torch.cat([labels,labels]).detach()
+                fs = torch.cat([reps_local, reps_aug])
+                ls = torch.cat([labels, labels]).detach()
 
                 if torch.unique(labels).shape[0] == 1:
                     sup_con_loss = torch.tensor(0)
                 else:
-                    sup_con_loss = MySupConLoss(fs,ls, 0.5)
+                    sup_con_loss = MySupConLoss(fs, ls, 0.5)
 
                 # 方式二
                 # if torch.unique(labels).shape[0] > 1:
@@ -466,10 +511,11 @@ class LocalMutualAug2(object):
     def __init__(self, args, train_set, lr):
         self.args = args
         self.loss_func = nn.CrossEntropyLoss()
-        self.train_loader = tool.get_local_loader(args,train_set)
+        self.train_loader = tool.get_local_loader(args, train_set)
         self.epoch = args.epoch
         self.lr = lr
-# 接受两个网络互学习，model是本地模型，meme是全局模型
+
+    # 接受两个网络互学习，model是本地模型，meme是全局模型
     def train_mul(self, net1, net2):
         model = net1
         meme = net2
@@ -494,8 +540,7 @@ class LocalMutualAug2(object):
             # loss_ce_meme = []
             # Training
             for batch_idx, (images, labels) in enumerate(self.train_loader):
-
-                inputs,inputs_aug,labels = images[0].to(device), images[1].to(device), labels.to(device)
+                inputs, inputs_aug, labels = images[0].to(device), images[1].to(device), labels.to(device)
                 meme_optimizer.zero_grad()
 
                 output_T = model(inputs)
@@ -515,6 +560,8 @@ class LocalMutualAug2(object):
 # 增强互学习，教师模型输入加噪的数据，本地客户端使用不加噪的数据，下一个epoch中添加上一个epoch中预测错的数据，再训练
 cifar10_mean = (0.491400, 0.482158, 0.4465231)
 cifar10_std = (0.247032, 0.243485, 0.2615877)
+
+
 class LocalMutualAug2_1(object):
     def __init__(self, args, train_set, round, lr):
         self.args = args
@@ -551,20 +598,21 @@ class LocalMutualAug2_1(object):
         for e in range(self.epoch):
             # Training
             # 获取预测错误的数据集
-            if (self.round > self.args.threshold) & (e == 1) :
+            if (self.round > self.args.threshold) & (e == 1):
                 # 将本地的dataset进行扩充, 预测错误数据集中第一个数据和标签不要
                 err_data_set = MyTensorDataset(err_inputs[0:-1].cpu(), err_labels[0:-1].cpu(),
                                                transforms=T.Compose([T.RandomHorizontalFlip(),  # 旋转和翻转
                                                                      T.RandomCrop(size=self.args.resize,
-                                                                                                                                                                                                                                                                                                                               padding=int(self.args.resize * 0.125),
+                                                                                  padding=int(self.args.resize * 0.125),
                                                                                   fill=128,
                                                                                   padding_mode='constant')]))
                 err_data_set_aug = MyTensorDataset(err_inputs[0:-1].cpu(), err_labels[0:-1].cpu(),
                                                    transforms=T.Compose([T.RandomHorizontalFlip(),  # 旋转和翻转
-                                                                        T.RandomCrop(size=self.args.resize,
-                                                                                  padding=int(self.args.resize * 0.125),
-                                                                                  fill=128,
-                                                                                  padding_mode='constant'),
+                                                                         T.RandomCrop(size=self.args.resize,
+                                                                                      padding=int(
+                                                                                          self.args.resize * 0.125),
+                                                                                      fill=128,
+                                                                                      padding_mode='constant'),
                                                                          RandAugmentCIFAR(n=2, m=8)
                                                                          ]))
                 local_train_set = torch.utils.data.ConcatDataset([local_train_set, err_data_set])
@@ -574,12 +622,12 @@ class LocalMutualAug2_1(object):
 
             # 原数据的dataloader 和 增强数据的dataloader
             train_loader = DataLoader(local_train_set, batch_size=self.args.batch_size, shuffle=False,
-                                      num_workers=self.args.num_workers,drop_last=True)
+                                      num_workers=self.args.num_workers, drop_last=True)
             train_loader_aug = DataLoader(local_train_set_aug, batch_size=self.args.batch_size, shuffle=False,
                                           num_workers=self.args.num_workers, drop_last=True)
             print(f"epoch:{e}")
             err_local_count = 0
-            err_meme_count =0
+            err_meme_count = 0
             for idx, (data, aug_data) in enumerate(zip(train_loader, train_loader_aug)):
                 inputs, labels = data[0], data[1]
                 inputs_aug, labels_aug = aug_data[0], aug_data[1]
@@ -604,12 +652,12 @@ class LocalMutualAug2_1(object):
 
                     err_local = torch.eq(pred_local, labels)
                     err_meme = torch.eq(pred_meme, labels)
-                    err_local_count += (err_local==False).sum()
-                    err_meme_count += (err_meme==False).sum()
+                    err_local_count += (err_local == False).sum()
+                    err_meme_count += (err_meme == False).sum()
                     # print(f'err_meme_count:{err_meme_count}')
                     # 对两个预测错误的求或操作，（如果两个都预测错误，则不会加入两次）
                     # 看下本地和全局预测的错误数量
-                    sum_local = (err_local==False).sum()
+                    sum_local = (err_local == False).sum()
                     err_all = ~(err_local | err_meme)
                     # 收集预测错误的原始数据，只收集原始数据[ok]
 
@@ -628,7 +676,6 @@ class LocalMutualAug2_1(object):
         return model.parameters(), meme.parameters()
 
 
-
 # 学生使用弱增强学习，教师使用强增强学习，最后共同使用真实数据微调
 class LocalMutualAug3(object):
     def __init__(self, args, train_loader, train_loader_aug, lr):
@@ -638,7 +685,8 @@ class LocalMutualAug3(object):
         self.train_loader_aug = train_loader_aug
         self.epoch = args.epoch
         self.lr = lr
-# 接受两个网络互学习，model是本地模型，meme是全局模型
+
+    # 接受两个网络互学习，model是本地模型，meme是全局模型
     def train_mul(self, net1, net2):
         model = net1
         meme = net2
@@ -660,7 +708,7 @@ class LocalMutualAug3(object):
         for e in range(self.epoch):
             # Training
             for idx, (labeled_data, aug_data) in enumerate(zip(self.train_loader, self.train_loader_aug)):
-                inputs,labels = labeled_data[0], labeled_data[1]
+                inputs, labels = labeled_data[0], labeled_data[1]
                 inputs_aug_w, inputs_aug_s, targets_u = aug_data[0][0], aug_data[0][1], aug_data[1]
 
                 inputs, labels = inputs.to(device), labels.to(device)
@@ -672,8 +720,7 @@ class LocalMutualAug3(object):
                 output_local = model(inputs)
                 output_w = meme(inputs_aug_w)
                 output_s = meme(inputs_aug_s)
-                output_avg = (output_s + output_w)/2
-
+                output_avg = (output_s + output_w) / 2
 
                 ce_local = CE_Loss(output_local, labels)
                 kl_local = KL_Loss(LogSoftmax(output_local), Softmax(output_avg.detach()))
@@ -681,7 +728,6 @@ class LocalMutualAug3(object):
                 ce_meme = CE_Loss(output_avg, labels)
                 kl_meme = KL_Loss(LogSoftmax(output_avg), Softmax(output_local.detach()))
                 kl_meme_loss = KL_Loss(LogSoftmax(output_w), Softmax(output_s.detach()))
-
 
                 # 蒸馏，互学习
 
@@ -694,6 +740,7 @@ class LocalMutualAug3(object):
                 meme_optimizer.step()
         return model.parameters(), meme.parameters()
 
+
 # 教师网络 强增强和弱增强 互学习
 class LocalMutualAug3(object):
     def __init__(self, args, train_loader, train_loader_aug, lr):
@@ -703,7 +750,8 @@ class LocalMutualAug3(object):
         self.train_loader_aug = train_loader_aug
         self.epoch = args.epoch
         self.lr = lr
-# 接受两个网络互学习，model是本地模型，meme是全局模型
+
+    # 接受两个网络互学习，model是本地模型，meme是全局模型
     def train_mul(self, net1, net2):
         model = net1
         meme = net2
@@ -725,7 +773,7 @@ class LocalMutualAug3(object):
         for e in range(self.epoch):
             # Training
             for idx, (labeled_data, aug_data) in enumerate(zip(self.train_loader, self.train_loader_aug)):
-                inputs,labels = labeled_data[0], labeled_data[1]
+                inputs, labels = labeled_data[0], labeled_data[1]
                 inputs_aug_w, inputs_aug_s, targets_u = aug_data[0][0], aug_data[0][1], aug_data[1]
 
                 inputs, labels = inputs.to(device), labels.to(device)
@@ -737,8 +785,7 @@ class LocalMutualAug3(object):
                 output_local = model(inputs)
                 output_w = meme(inputs_aug_w)
                 output_s = meme(inputs_aug_s)
-                output_avg = (output_s + output_w)/2
-
+                output_avg = (output_s + output_w) / 2
 
                 ce_local = CE_Loss(output_local, labels)
                 kl_local = KL_Loss(LogSoftmax(output_local), Softmax(output_avg.detach()))
@@ -748,17 +795,17 @@ class LocalMutualAug3(object):
                 ce_meme2 = CE_Loss(output_s, labels)
                 kl_meme2 = KL_Loss(LogSoftmax(output_w), Softmax(output_s.detach()))
 
-
                 # 蒸馏，互学习
 
                 loss_local = alpha * ce_local + (1 - alpha) * kl_local
-                loss_meme = beta * (ce_meme1+ce_meme2) + (1-beta) * (kl_meme1+kl_meme2)
-                loss = loss_local + loss_meme/2
+                loss_meme = beta * (ce_meme1 + ce_meme2) + (1 - beta) * (kl_meme1 + kl_meme2)
+                loss = loss_local + loss_meme / 2
                 loss.backward()
 
                 optimizer.step()
                 meme_optimizer.step()
         return model.parameters(), meme.parameters()
+
 
 # 教师网络 现学现教
 class LocalMutualAug4(object):
@@ -769,7 +816,8 @@ class LocalMutualAug4(object):
         self.train_loader_aug = train_loader_aug
         self.epoch = args.epoch
         self.lr = lr
-# 接受两个网络互学习，model是本地模型，meme是全局模型
+
+    # 接受两个网络互学习，model是本地模型，meme是全局模型
     def train_mul(self, net1, net2):
         model = net1
         meme = net2
@@ -806,7 +854,6 @@ class LocalMutualAug4(object):
                 meme_optimizer.zero_grad()
                 # 教师学完之后再和学生网络互学习
 
-
                 output_local = model(inputs)
                 output_meme2 = meme(inputs_aug)
                 ce_local = CE_Loss(output_local, labels)
@@ -815,7 +862,7 @@ class LocalMutualAug4(object):
                 kl_meme = KL_Loss(LogSoftmax(output_meme2), Softmax(output_local.detach()))
 
                 loss_local = alpha * ce_local + (1 - alpha) * kl_local
-                loss_meme = beta * ce_meme2 + (1-beta) * kl_meme
+                loss_meme = beta * ce_meme2 + (1 - beta) * kl_meme
                 loss = loss_local + loss_meme
                 loss.backward()
 
@@ -842,6 +889,7 @@ def getLoss(output_local, output_meme, labels, alpha, beta):
     loss = loss_local + loss_meme
     return loss
 
+
 # 学生先对原图进行预测，在使用弱增强和教师模型互学习，教师模型使用强增强。
 # 学生先更新，更新完之后再在原图上预测，用学生的反馈再更新教师。
 class LocalMutualMpl(object):
@@ -852,9 +900,8 @@ class LocalMutualMpl(object):
         self.train_loader_aug = train_loader_aug
         self.epoch = args.epoch
         self.lr = lr
-# 接受两个网络互学习，model是本地模型，meme是全局模型
 
-
+    # 接受两个网络互学习，model是本地模型，meme是全局模型
 
     def train_mul(self, net1, net2):
         model = net1
@@ -867,10 +914,8 @@ class LocalMutualMpl(object):
         meme.train()
         meme = meme.to(device)
 
-
         alpha = 0.9
         beta = 0.9
-
 
         for e in range(self.epoch):
             # Training
@@ -886,8 +931,8 @@ class LocalMutualMpl(object):
                 # 互学习
                 output_aug_w = model(inputs_aug_w)
                 output_aug_s = meme(inputs_aug_s)
-                ce_w = CE_Loss(output_aug_w,labels)
-                ce_s = CE_Loss(output_aug_s,labels)
+                ce_w = CE_Loss(output_aug_w, labels)
+                ce_s = CE_Loss(output_aug_s, labels)
                 kl_w = KL_Loss(LogSoftmax(output_aug_w), Softmax(output_aug_s.detach()))
                 kl_s = KL_Loss(LogSoftmax(output_aug_s), Softmax(output_aug_w.detach()))
                 loss_local = alpha * ce_w + (1 - alpha) * kl_w
@@ -898,7 +943,7 @@ class LocalMutualMpl(object):
                 # 再预测
                 output_new = model(inputs)
                 s_loss_new = CE_Loss(output_new.detach(), labels)
-                t_loss = loss_meme * (1+s_loss_old - s_loss_new)
+                t_loss = loss_meme * (1 + s_loss_old - s_loss_new)
 
                 # 有个问题，s_loss的backward() 对教师模型的影响
                 # meme_optimizer.zero_grad()
@@ -917,7 +962,8 @@ class LocalMutualAug6(object):
         self.train_loader_aug = train_loader_aug
         self.epoch = args.epoch
         self.lr = lr
-# 接受两个网络互学习，model是本地模型，meme是全局模型
+
+    # 接受两个网络互学习，model是本地模型，meme是全局模型
     def train_mul(self, net1, net2):
         model = net1
         meme = net2
@@ -938,8 +984,8 @@ class LocalMutualAug6(object):
 
         for e in range(self.epoch):
             # Training
-            for idx , (data, aug_data) in enumerate(zip(self.train_loader,self.train_loader_aug)):
-                inputs,labels = data[0],data[1]
+            for idx, (data, aug_data) in enumerate(zip(self.train_loader, self.train_loader_aug)):
+                inputs, labels = data[0], data[1]
                 inputs_aug, labels_aug = aug_data[0], aug_data[1]
                 inputs, labels = inputs.to(device), labels.to(device)
                 inputs_aug = inputs_aug.to(device)
@@ -963,6 +1009,7 @@ class LocalMutualAug6(object):
                 meme_optimizer.step()
         return model.parameters(), meme.parameters()
 
+
 class LocalMPL(object):
     def __init__(self, args, labeled_loader, unlabeled_loader, lr):
         self.args = args
@@ -972,8 +1019,8 @@ class LocalMPL(object):
         self.epoch = args.epoch
         self.lr = lr
 
-    def train_MPL(self, teacher_model, student_model,round_num):
-        threshold = (self.args.round_num*0.15 +(round_num*0.8))/self.args.round_num  # 教师对无标签数据的预测门槛
+    def train_MPL(self, teacher_model, student_model, round_num):
+        threshold = (self.args.round_num * 0.15 + (round_num * 0.8)) / self.args.round_num  # 教师对无标签数据的预测门槛
         temperature = 1.2  # 温度
         uda_steps = self.args.round_num
         lambda_u = 1
@@ -994,9 +1041,9 @@ class LocalMPL(object):
         student_model = student_model.to(device)
         before = time.time()
         for e in range(self.epoch):
-            for idx, (labeled_data, unlabeled_data) in enumerate(zip(self.labeled_loader,self.unlabeled_loader)):
-                images_l, targets = labeled_data[0],labeled_data[1]
-                images_us, images_uw, targets_u = unlabeled_data[0][0],unlabeled_data[0][1],unlabeled_data[1]
+            for idx, (labeled_data, unlabeled_data) in enumerate(zip(self.labeled_loader, self.unlabeled_loader)):
+                images_l, targets = labeled_data[0], labeled_data[1]
+                images_us, images_uw, targets_u = unlabeled_data[0][0], unlabeled_data[0][1], unlabeled_data[1]
                 t_optimizer.zero_grad()
                 s_optimizer.zero_grad()
                 images_l = images_l.to(device)
@@ -1004,7 +1051,7 @@ class LocalMPL(object):
                 images_us = images_us.to(device)
                 targets = targets.to(device)
 
-                with amp.autocast(enabled=True): # 精度转换（暂时不要）
+                with amp.autocast(enabled=True):  # 精度转换（暂时不要）
                     batch_size = images_l.shape[0]
                     t_images = torch.cat((images_l, images_uw, images_us))
 
@@ -1043,7 +1090,6 @@ class LocalMPL(object):
                 s_optimizer.step()
                 # s_scheduler.step()
 
-
                 # 更新教师模型
                 with amp.autocast(enabled=True):
                     with torch.no_grad():
@@ -1057,21 +1103,20 @@ class LocalMPL(object):
                     t_loss_mpl = dot_product * F.cross_entropy(t_logits_us, hard_pseudo_label)
                     # t_loss = t_loss_uda + t_loss_mpl
                     t_loss = t_loss_uda
-                    if round_num>20:
-                        t_loss += t_loss_mpl * min(1., (round_num-20) / 20)
+                    if round_num > 20:
+                        t_loss += t_loss_mpl * min(1., (round_num - 20) / 20)
 
                 t_loss.backward()
                 torch.nn.utils.clip_grad_norm_(teacher_model.parameters(), 1e5)
                 t_optimizer.step()
             endtime = time.time()
             print(f"epooch-{e}训练用时：{endtime - before}")
-                # t_scheduler.step()
-                # todo 微调
-                # prediction = teacher_model(images_l)
-                # loss = self.loss_func(prediction, targets)
-                # loss.backward()
-                # t_optimizer.step()
-
+            # t_scheduler.step()
+            # todo 微调
+            # prediction = teacher_model(images_l)
+            # loss = self.loss_func(prediction, targets)
+            # loss.backward()
+            # t_optimizer.step()
 
         # 结束后，学生模型作为本地模型，教师模型作为全局模型
         return teacher_model, student_model
@@ -1086,7 +1131,7 @@ class LocalDC(object):
         self.epoch = args.epoch
         self.lr = lr
 
-    def train_fed_dc(self,net):
+    def train_fed_dc(self, net):
         optimizer = torch.optim.SGD(net.parameters(), lr=self.lr, weight_decay=1e-3, momentum=0.9)
         net.train()
         net = net.to(device)
@@ -1098,7 +1143,7 @@ class LocalDC(object):
                 optimizer.zero_grad()
                 prediction = net(inputs)
                 loss = self.loss_func(prediction, labels)
-                loss_f_i = loss/list(labels.size())[0]
+                loss_f_i = loss / list(labels.size())[0]
 
                 local_parameter = None
                 for param in net.parameters():
@@ -1110,7 +1155,6 @@ class LocalDC(object):
                 # loss_cp = alpha / 2 * torch.sum((local_parameter - (global_model_param - hist_i)) * (
                 #             local_parameter - (global_model_param - hist_i)))
                 # loss_cg = torch.sum(local_parameter * state_update_diff)
-
 
                 per_epoch_loss.append(loss.item())
                 loss.backward()

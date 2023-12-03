@@ -6,7 +6,7 @@ import datetime
 
 import torchvision
 import torchvision.transforms as transforms
-from methods.frame import fedavg,fedavg2,fedavg3,fed_con, fed_mutual_aug_supcon, fed_mutual, fed_ring, fed_oneway, fed_mpl, fed_mutual_aug, fed_mutual_aug2, fed_mutual_fix, fed_prox, fed_mul_aug2_1, pre_train, fed_avg_aggr_greedy
+from methods.frame import fedavg,fedavg2,fedavg3,fed_con, fedavg_mas, fed_mutual_aug_supcon, fed_mutual, fed_ring, fed_oneway, fed_mpl, fed_mutual_aug, fed_mutual_aug2, fed_mutual_fix, fed_prox, fed_mul_aug2_1, pre_train, fed_avg_aggr_greedy
 from methods.tool import tool
 from utils import split
 
@@ -21,7 +21,7 @@ def read_options():
     parser.add_argument("--data_path", help="data path", type=str, default="../data")
     parser.add_argument("--optimizer", help="name of optimizer", type=str, choices=OPTIMIZERS, default="fedavg")
     parser.add_argument("--dataset", help="name of dataset", type=str, choices=DATASETS, default="cifar10")
-    parser.add_argument("--model", help="name of model", type=str, choices=MODELS, default="cnn")
+    parser.add_argument("--model", help="name of model", type=str, choices=MODELS, default="ccnn")
     parser.add_argument("--client_num", help="count of all clients ", type=int, default=50)
     parser.add_argument("--epoch", help="epoch", type=int, default=5)
     parser.add_argument("--class_num", help="count of all classes ", type=int)
@@ -72,7 +72,8 @@ def run_fed():
 
     # train_set, test_set = tool.get_data_set(args,True)
     # pre_train.train_and_save(args,train_set,part_data)
-    fed_avg_aggr_greedy.fed_avg_aggr_greedy(args,part_data)
+    fedavg_mas.fedavg_mas(args,part_data)
+    # fed_avg_aggr_greedy.fed_avg_aggr_greedy(args,part_data)
     # fedavg.fedavg(args,  part_data)
     # fed_mutual.fed_mutual(args, train_set, test_set, part_data)
     # fed_prox.fedprox(args,train_set, test_set,part_data)

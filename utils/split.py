@@ -13,7 +13,7 @@ from fedlab.utils.dataset.partition import CIFAR10Partitioner, MNISTPartitioner,
 
 
 # 使用fedlab实现自定义dirichlet分布，并将结果保存为文件，下次加载即可使用
-from fedlab.utils.functional import load_dict, partition_report, save_dict
+from fedlab.utils.functional import partition_report
 
 
 def dirichlet_part(args, trainset, alpha):
