@@ -21,11 +21,6 @@ def fedavg_mas(args, part_data):
     writer = SummaryWriter(f"{path}/{writer_file}")
     # 所有已经分好组的训练集和测试集
     train_sets = [Subset(train_set, part_data.client_dict[i]) for i in range(args.client_num)]
-
-
-    train_loaders = [DataLoader(Subset(train_set, part_data.client_dict[i]), batch_size=args.batch_size, shuffle=True,
-                                num_workers=args.num_workers, drop_last=True)
-                     for i in range(args.client_num)]
     test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
     # 选择模型
     options = md.generate_options(args.dataset, args.model)
@@ -49,7 +44,8 @@ def fedavg_mas(args, part_data):
             local_acc = tool.global_test(param,test_loader)
             print(f"FedAvg Round {item} client {k} Acc:{local_acc}")
             selected_params.append(tool.get_flat_params_from(param.parameters()))
-            selected_data_num.append(train_loaders[k].sampler.num_samples)
+
+            selected_data_num.append(train_sets[k].indices.size)
             # print(f"Client:{k} Loss:{loss}")
 
         # 每轮训练结束后，将该轮选取的客户端模型聚合，得到最新的全局模型

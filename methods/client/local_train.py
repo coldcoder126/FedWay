@@ -235,7 +235,7 @@ class LocalTrainMAS(object):
         )
         for train_task in train_stream:
             # print("Current Classes: ", train_task.classes_in_this_experience)
-            cl_strategy.train(train_task)
+            cl_strategy.train(train_task, drop_last=True)
         return net, 0
 
 
