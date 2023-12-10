@@ -133,7 +133,7 @@ def consolidate_reg_params(model):
     for name, param in model.named_parameters():
         if param in reg_params:
             param_dict = reg_params[param]
-            print("Consolidating the omega values for layer", name)
+            # print("Consolidating the omega values for layer", name)
 
             # Store the previous values of omega
             prev_omega = param_dict['prev_omega']
