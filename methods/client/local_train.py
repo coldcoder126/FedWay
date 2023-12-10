@@ -14,6 +14,7 @@ from torchvision.transforms import transforms as T
 from methods.tool.augmentation import RandAugmentCIFAR
 from methods.tool.mpl_tool import MyTensorDataset
 from src.optimizer.loss_con import MySupConLoss
+from src.optimizer.loss_mas import optimizer_mas
 from src.optimizer.loss_mul import dkd_loss
 from methods.tool import con_tool
 import methods.tool.tool as tool
@@ -21,6 +22,7 @@ from src.optimizer.loss_rslad import rslad_inner_loss
 from methods.tool.mas_tool import *
 from avalanche.benchmarks.generators import ni_benchmark
 from avalanche.training.supervised import MAS
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
@@ -105,7 +107,7 @@ class LocalTrain(object):
                 fed_prox_reg = 0.0
                 for param_index, param in enumerate(net.parameters()):
                     fed_prox_reg += (
-                                (self.args.mu / 2) * torch.norm((param - global_weight_collector[param_index])) ** 2)
+                            (self.args.mu / 2) * torch.norm((param - global_weight_collector[param_index])) ** 2)
                 loss += fed_prox_reg
                 per_epoch_loss.append(loss.item())
                 loss.backward()
@@ -198,12 +200,32 @@ class LocalTrain(object):
                 optimizer.step()
                 meme_optimizer.step()
 
+    def train_mas(self, net):
+        optimizer = optimizer_mas(net.parameters(), reg_lambda=0.01, lr=self.lr, weight_decay=1e-3, momentum=0.9)
+        net.train()
+        net = net.to(device)
+        epoch_loss = []
+        for epoch in range(self.epoch):
+            per_epoch_loss = []
+            for batch_idx, (inputs, labels) in enumerate(self.train_loader):
+                inputs, labels = inputs.to(device), labels.to(device)
+                optimizer.zero_grad()
+                prediction = net(inputs)
+                loss = self.loss_func(prediction, labels)
+                per_epoch_loss.append(loss.item())
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(net.parameters(), 1e5)
+                optimizer.step(net.reg_params)
+            per_loss = sum(per_epoch_loss) / len(per_epoch_loss)
+            epoch_loss.append(per_loss)
+        return net, sum(epoch_loss) / len(epoch_loss)
+
 
 class LocalTrainMAS(object):
-    def __init__(self, args, train_set, lr):
+    def __init__(self, args, train_loader, lr):
         self.args = args
         self.loss_func = nn.CrossEntropyLoss()
-        self.train_set = train_set
+        self.train_loader = train_loader
         self.epoch = args.epoch
         self.lr = lr
 
@@ -231,11 +253,22 @@ class LocalTrainMAS(object):
             train_epochs=self.epoch,
             eval_mb_size=32,
             device=device,
-            evaluator = None
+            evaluator=None
         )
-        for train_task in train_stream:
-            # print("Current Classes: ", train_task.classes_in_this_experience)
-            cl_strategy.train(train_task, drop_last=True)
+        # cl_strategy = MyCumulativeStrategy(
+        #     net,
+        #
+        #     optimizer,
+        #     self.loss_func,
+        #     train_mb_size=64,
+        #     train_epochs=self.epoch,
+        #     eval_mb_size=32,
+        #     device=device,
+        #     evaluator=None
+        # )
+        # for train_task in train_stream:
+        #     # print("Current Classes: ", train_task.classes_in_this_experience)
+        #     cl_strategy.train(train_task, drop_last=True)
         return net, 0
 
 

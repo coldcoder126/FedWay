@@ -45,7 +45,7 @@ def fedavg(args, part_data):
             global_model = copy.deepcopy(model)
             param, loss = local.train(global_model)
             local_acc = tool.global_test(param,test_loader)
-            print(f"FedAvg Round {item} client {k} Acc:{local_acc}")
+            print(f"  FedAvg Round {item} client {k} Acc:{local_acc}")
             selected_params.append(tool.get_flat_params_from(param.parameters()))
             selected_data_num.append(train_loaders[k].sampler.num_samples)
             # print(f"Client:{k} Loss:{loss}")

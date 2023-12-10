@@ -8,42 +8,44 @@ from copy import deepcopy
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+from torchvision import models
 from src.models import resnet
 
 
 class Logistic(nn.Module):
-    def __init__(self,in_dim, out_dim):
-        super(Logistic,self).__init__()
+    def __init__(self, in_dim, out_dim):
+        super(Logistic, self).__init__()
         self.layer = nn.Linear(in_dim, out_dim)
 
-    def forward(self,x):
+    def forward(self, x):
         logit = self.layer(x)
         return logit
 
+
 class TwoHiddenLayerFc(nn.Module):
-    def __init__(self,input_shape,out_dim):
-        super(TwoHiddenLayerFc,self).__init__()
-        self.fc1= nn.Linear(input_shape,200)
-        self.fc2 = nn.Linear(200,200)
+    def __init__(self, input_shape, out_dim):
+        super(TwoHiddenLayerFc, self).__init__()
+        self.fc1 = nn.Linear(input_shape, 200)
+        self.fc2 = nn.Linear(200, 200)
         self.fc3 = nn.Linear(200, out_dim)
 
-    def forward(self,x):
+    def forward(self, x):
         out = F.relu(self.fc1(x))
         out = F.relu(self.fc2(x))
         out = self.fc3(out)
         return out
 
+
 class LeNet(nn.Module):
     def __init__(self, input_shape, out_dim):
         super(LeNet, self).__init__()
-        self.conv1 = nn.Conv2d(input_shape[0],6,5)
-        self.conv2 = nn.Conv2d(6,16,5)
-        self.fc1 = nn.Linear(16*5*5,120)
-        self.fc2 = nn.Linear(120,84)
-        self.fc3 = nn.Linear(84,out_dim)
+        self.conv1 = nn.Conv2d(input_shape[0], 6, 5)
+        self.conv2 = nn.Conv2d(6, 16, 5)
+        self.fc1 = nn.Linear(16 * 5 * 5, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, out_dim)
 
-    def forward(self,x):
+    def forward(self, x):
         out = F.relu(self.conv1(x))
         out = F.max_pool2d(out, 2)
         out = F.relu(self.conv2(out))
@@ -53,6 +55,8 @@ class LeNet(nn.Module):
         out = F.relu(self.fc2(out))
         out = self.fc3(out)
         return out
+
+
 class TwoConvOneFc(nn.Module):
     def __init__(self, input_shape, out_dim):
         super(TwoConvOneFc, self).__init__()
@@ -72,50 +76,93 @@ class TwoConvOneFc(nn.Module):
         return out
 
 
+# class CifarCnn(nn.Module):
+#     def __init__(self, input_shape, out_dim):
+#         super(CifarCnn, self).__init__()
+#         self.reg_params = {}
+#         self.bn1 = nn.BatchNorm2d(32)
+#         self.bn2 = nn.BatchNorm2d(64)
+#         self.bn3 = nn.BatchNorm1d(512)
+#         self.bn4 = nn.BatchNorm1d(128)
+#         self.conv1 = nn.Conv2d(input_shape[0], 32, 5)
+#         self.conv2 = nn.Conv2d(32, 64, 5)
+#         self.fc1 = nn.Linear(64 * 5 * 5, 512)
+#         self.fc2 = nn.Linear(512, 128)
+#         self.fc = nn.Linear(128, out_dim)
+#         for m in self.modules():
+#             if isinstance(m, nn.Conv2d):
+#                 n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+#                 m.weight.data.normal_(0, math.sqrt(2. / n))
+#                 m.bias.data.zero_()
+#             elif isinstance(m, nn.Linear):
+#                 stdv = 1. / math.sqrt(m.weight.size(1))
+#                 m.weight.data.uniform_(-stdv, stdv)
+#                 if m.bias is not None:
+#                     m.bias.data.uniform_(-stdv, stdv)
+#
+#     def forward(self, x):
+#         out = F.relu(self.bn1(self.conv1(x)))
+#         out = F.max_pool2d(out, 2)
+#         out = F.relu(self.bn2(self.conv2(out)))
+#         out = F.max_pool2d(out, 2)
+#         out = out.view(out.size(0), -1)
+#         out = F.relu(self.bn3(self.fc1(out)))
+#         out = F.relu(self.bn4(self.fc2(out)))
+#         out = self.fc(out)
+#         return out
+
+
 class CifarCnn(nn.Module):
-    def __init__(self, input_shape, out_dim):
+    def __init__(self, input_shape, num_classes):
         super(CifarCnn, self).__init__()
-        self.bn1 = nn.BatchNorm2d(32)
-        self.bn2 = nn.BatchNorm2d(64)
-        self.bn3 = nn.BatchNorm1d(512)
-        self.bn4 = nn.BatchNorm1d(128)
-        self.conv1 = nn.Conv2d(input_shape[0], 32, 5)
-        self.conv2 = nn.Conv2d(32, 64, 5)
-        self.fc1 = nn.Linear(64*5*5, 512)
-        self.fc2 = nn.Linear(512, 128)
-        self.fc = nn.Linear(128, out_dim)
+        self.reg_params = {}
+        self.features = nn.Sequential(
+            nn.Conv2d(input_shape[0], 32, kernel_size=5, padding=2),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(32, 64, kernel_size=5, padding=2),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+        )
+        self.classifier = nn.Sequential(
+            nn.Linear(64 * 8 * 8, 512),  # 这里的输入特征数量需要根据特征提取部分的输出进行调整
+            nn.BatchNorm1d(512),
+            nn.ReLU(inplace=True),
+            nn.Linear(512, 128),
+            nn.BatchNorm1d(128),
+            nn.ReLU(inplace=True),
+            nn.Linear(128, num_classes),
+        )
+        self._initialize_weights()
+
+    def forward(self, x):
+        x = self.features(x)
+        x = x.view(x.size(0), -1)  # 将特征图展平
+        x = self.classifier(x)
+        return x
+
+    def _initialize_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
                 m.weight.data.normal_(0, math.sqrt(2. / n))
-                m.bias.data.zero_()
             elif isinstance(m, nn.Linear):
                 stdv = 1. / math.sqrt(m.weight.size(1))
                 m.weight.data.uniform_(-stdv, stdv)
-                if m.bias is not None:
-                    m.bias.data.uniform_(-stdv, stdv)
-
-    def forward(self, x):
-        out = F.relu(self.bn1(self.conv1(x)))
-        out = F.max_pool2d(out, 2)
-        out = F.relu(self.bn2(self.conv2(out)))
-        out = F.max_pool2d(out, 2)
-        out = out.view(out.size(0), -1)
-        out = F.relu(self.bn3(self.fc1(out)))
-        out = F.relu(self.bn4(self.fc2(out)))
-        out = self.fc(out)
-        return out
 
 class CifarCnnEncoder(nn.Module):
     def __init__(self, input_shape, feat_dim):
         super(CifarCnnEncoder, self).__init__()
+        self.reg_params = {}
         self.bn1 = nn.BatchNorm2d(32)
         self.bn2 = nn.BatchNorm2d(64)
         self.bn3 = nn.BatchNorm1d(512)
         self.bn4 = nn.BatchNorm1d(128)
         self.conv1 = nn.Conv2d(input_shape[0], 32, 5)
         self.conv2 = nn.Conv2d(32, 64, 5)
-        self.fc1 = nn.Linear(64*5*5, 512)
+        self.fc1 = nn.Linear(64 * 5 * 5, 512)
         self.fc2 = nn.Linear(512, feat_dim)
         # self.fc3 = nn.Linear(128, out_dim)
         for m in self.modules():
@@ -240,7 +287,7 @@ class WideResNet(nn.Module):
     def __init__(self, num_classes, depth=28, widen_factor=2, dropout=0.0, dense_dropout=0.0):
         super(WideResNet, self).__init__()
         channels = [16, 16 * widen_factor, 32 * widen_factor, 64 * widen_factor]
-        assert((depth - 4) % 6 == 0)
+        assert ((depth - 4) % 6 == 0)
         n = (depth - 4) / 6
         block = BasicBlock
         # 1st conv before any network block
@@ -285,9 +332,6 @@ class WideResNet(nn.Module):
         return self.fc(self.drop(out))
 
 
-
-
-
 def choose_model(options):
     model_name = str(options['model']).lower()
     if model_name == 'logistic':
@@ -298,8 +342,8 @@ def choose_model(options):
         return TwoConvOneFc(options['input_shape'], options['num_class'])
     elif model_name == 'ccnn':
         return CifarCnn(options['input_shape'], options['num_class'])
-    elif model_name == 'lenet':
-        return LeNet(options['input_shape'], options['num_class'])
+    elif model_name == 'alex':
+        return models.alexnet(num_classes=options['num_class'])
     elif model_name.startswith('vgg'):
         mod = importlib.import_module('src.models.vgg')
         vgg_model = getattr(mod, model_name)
@@ -309,12 +353,13 @@ def choose_model(options):
     else:
         raise ValueError("Not support model: {}!".format(model_name))
 
-def choose_encoder(name,feat_dim):
+
+def choose_encoder(name, feat_dim):
     if name == 'ccnn':
-        return CifarCnnEncoder((3, 32, 32),feat_dim)
+        return CifarCnnEncoder((3, 32, 32), feat_dim)
 
 
-def generate_options(dataset,model):
+def generate_options(dataset, model):
     model = model.lower()
     if dataset == 'mnist' or dataset == 'nist':
         if model == 'logistic' or model == '2nn':
@@ -326,7 +371,7 @@ def generate_options(dataset,model):
     elif dataset == 'cifar100':
         return {'input_shape': (3, 32, 32), 'num_class': 100}
     elif dataset == 'svhn':
-        return {'input_shape':(3,32,32), 'num_class': 10}
+        return {'input_shape': (3, 32, 32), 'num_class': 10}
     elif dataset == 'sent140':
         sent140 = {'bag_dnn': {'num_class': 2},
                    'stacked_lstm': {'seq_len': 25, 'num_class': 2, 'num_hidden': 100},
