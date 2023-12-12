@@ -19,7 +19,7 @@ from src.optimizer.loss_mul import dkd_loss
 from methods.tool import con_tool
 import methods.tool.tool as tool
 from src.optimizer.loss_rslad import rslad_inner_loss
-from methods.tool.mas_tool import *
+from utils.mas_util import *
 from avalanche.benchmarks.generators import ni_benchmark
 from avalanche.training.supervised import MAS
 
@@ -205,19 +205,27 @@ class LocalTrain(object):
         net.train()
         net = net.to(device)
         epoch_loss = []
+        omega_epochs = self.epoch + 1
         for epoch in range(self.epoch):
-            per_epoch_loss = []
-            for batch_idx, (inputs, labels) in enumerate(self.train_loader):
-                inputs, labels = inputs.to(device), labels.to(device)
-                optimizer.zero_grad()
-                prediction = net(inputs)
-                loss = self.loss_func(prediction, labels)
-                per_epoch_loss.append(loss.item())
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(net.parameters(), 1e5)
-                optimizer.step(net.reg_params)
-            per_loss = sum(per_epoch_loss) / len(per_epoch_loss)
-            epoch_loss.append(per_loss)
+            if (epoch == omega_epochs - 1):
+                # 在最后一轮不进行训练，仅更新模型
+                # no training of the model takes place in this epoch
+                optimizer_ft = omega_update(net.reg_params)
+                print("Updating the omega values for this task")
+                net = compute_omega_grads_norm(net, self.train_loader, optimizer_ft)
+            else:
+                per_epoch_loss = []
+                for batch_idx, (inputs, labels) in enumerate(self.train_loader):
+                    inputs, labels = inputs.to(device), labels.to(device)
+                    optimizer.zero_grad()
+                    prediction = net(inputs)
+                    loss = self.loss_func(prediction, labels)
+                    per_epoch_loss.append(loss.item())
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(net.parameters(), 1e5)
+                    optimizer.step(net.reg_params)
+                per_loss = sum(per_epoch_loss) / len(per_epoch_loss)
+                epoch_loss.append(per_loss)
         return net, sum(epoch_loss) / len(epoch_loss)
 
 

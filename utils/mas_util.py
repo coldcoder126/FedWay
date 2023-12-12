@@ -152,7 +152,7 @@ def consolidate_reg_params(model):
     return model
 
 
-def compute_omega_grads_norm(model, dataloader, optimizer, use_gpu):
+def compute_omega_grads_norm(model, dataloader, optimizer):
     """
     Inputs:
     1) model: A reference to the model for which omega is to be calculated
@@ -176,9 +176,8 @@ def compute_omega_grads_norm(model, dataloader, optimizer, use_gpu):
         # get the inputs and labels
         inputs, labels = data
 
-        if (use_gpu):
-            device = torch.device("cuda:0" if use_gpu else "cpu")
-            inputs, labels = inputs.to(device), labels.to(device)
+
+        inputs, labels = inputs.to(device), labels.to(device)
 
         # Zero the parameter gradients
         optimizer.zero_grad()
@@ -201,7 +200,7 @@ def compute_omega_grads_norm(model, dataloader, optimizer, use_gpu):
         sum_norm.backward()
 
         # optimizer.step computes the omega values for the new batches of data
-        optimizer.step(model.reg_params, index, labels.size(0), use_gpu)
+        optimizer.step(model.reg_params, index, labels.size(0))
         del labels
 
         index = index + 1
