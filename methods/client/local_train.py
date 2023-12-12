@@ -206,8 +206,8 @@ class LocalTrain(object):
         net = net.to(device)
         epoch_loss = []
         omega_epochs = self.epoch + 1
-        for epoch in range(self.epoch):
-            if (epoch == omega_epochs - 1):
+        for epoch in range(omega_epochs):
+            if (epoch == self.epoch):
                 # 在最后一轮不进行训练，仅更新模型
                 # no training of the model takes place in this epoch
                 optimizer_ft = omega_update(net.reg_params)
