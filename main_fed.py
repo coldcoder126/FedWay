@@ -74,7 +74,7 @@ def run_fed():
     # pre_train.train_and_save(args,train_set,part_data)
     fedavg_mas.fed_mas(args,part_data)
     # fed_avg_aggr_greedy.fed_avg_aggr_greedy(args,part_data)
-    fedavg.fedavg(args,  part_data)
+    # fedavg.fedavg(args,  part_data)
     # fed_mutual.fed_mutual(args, train_set, test_set, part_data)
     # fed_prox.fedprox(args,train_set, test_set,part_data)
     # fed_mutual_aug.fed_mutual(args,test_set,part_data)
