@@ -212,7 +212,8 @@ class LocalTrain(object):
         Softmax = nn.Softmax(dim=1)
         LogSoftmax = nn.LogSoftmax(dim=1)
         CE_Loss = nn.CrossEntropyLoss()
-        alpha = 0.9
+        alpha = 0.7
+        temperature = 2
 
         for e in range(self.epoch):
             # Training
@@ -223,8 +224,10 @@ class LocalTrain(object):
                 output_global = teacher(inputs)
                 # 蒸馏
                 ce_local = CE_Loss(output_local, labels)
+                teacher_soft = F.log_softmax(output_global / temperature, dim=1)
+                student_soft = F.softmax(output_local / temperature, dim=1)
                 # ce_meme = CE_Loss(output_global, labels)
-                kl_local = KL_Loss(LogSoftmax(output_local), Softmax(output_global.detach()))
+                kl_local = KL_Loss(teacher_soft,student_soft) * (temperature**2)
                 loss = alpha * ce_local + (1 - alpha) * kl_local
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(student.parameters(), 1e5)
