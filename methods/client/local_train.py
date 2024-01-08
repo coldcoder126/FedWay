@@ -200,17 +200,15 @@ class LocalTrain(object):
                 optimizer.step()
                 meme_optimizer.step()
 
-    def train_distill(self, student, teacher):
-        student_optimizer = torch.optim.SGD(student.parameters(), lr=self.lr, weight_decay=1e-3, momentum=0.9)
+    def train_distill(self, net):
+        student = net
+        teacher = copy.deepcopy(net)
 
+        student_optimizer = torch.optim.SGD(student.parameters(), lr=self.lr, weight_decay=1e-3, momentum=0.9)
         student.train()
         student = student.to(device)
-        teacher.train()
-        teacher = teacher.to(device)
 
         KL_Loss = nn.KLDivLoss(reduction='batchmean')
-        Softmax = nn.Softmax(dim=1)
-        LogSoftmax = nn.LogSoftmax(dim=1)
         CE_Loss = nn.CrossEntropyLoss()
         alpha = self.args.dist_alpha
         temperature = 2
@@ -232,6 +230,7 @@ class LocalTrain(object):
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(student.parameters(), 1e5)
                 student_optimizer.step()
+        return net
 
 
     def train_mas(self, net):

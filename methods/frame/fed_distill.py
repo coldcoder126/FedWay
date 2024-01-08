@@ -44,11 +44,12 @@ def fed_distill(args, part_data):
         selected_data_num = []  #选中客户端的样本数量
         for k in idx_users:
             # 训练每个选到的客户端
-            local = LocalTrain(args, train_loaders[k],  lr)
-            local.train_distill(client_models[k], model)
-            # client_models[k] = con_tool.net_avg([k],client_models,copy.deepcopy(model),[1])
-            global_model = copy.deepcopy(client_models[k])
-            selected_params.append(tool.get_flat_params_from(global_model.parameters()))
+            local = LocalTrain(args, train_loaders[k], lr)
+            global_model = copy.deepcopy(model)
+            param = local.train_distill(global_model)
+            local_acc = tool.global_test(param, test_loader)
+            print(f"  FedDistill Round {item} client {k} Acc:{local_acc}")
+            selected_params.append(tool.get_flat_params_from(param.parameters()))
             selected_data_num.append(train_loaders[k].sampler.num_samples)
 
         # 每轮训练结束后，将该轮选取的客户端模型聚合，得到最新的全局模型
