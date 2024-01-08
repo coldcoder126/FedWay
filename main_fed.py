@@ -46,6 +46,9 @@ def read_options():
     # fedavg2算法需要
     parser.add_argument('--ln', default=4, type=int, help='number of layers in model to upload')
     parser.add_argument('--temp', default=0.07, type=float, help='temperature')
+
+    # distill算法需要
+    parser.add_argument('--dist_alpha', default=0.9, type=float, help='resize image')
     try:
         parsed = parser.parse_args()
     except IOError as msg:

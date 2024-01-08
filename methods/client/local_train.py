@@ -212,7 +212,7 @@ class LocalTrain(object):
         Softmax = nn.Softmax(dim=1)
         LogSoftmax = nn.LogSoftmax(dim=1)
         CE_Loss = nn.CrossEntropyLoss()
-        alpha = 0.7
+        alpha = self.args.dist_alpha
         temperature = 2
 
         for e in range(self.epoch):
