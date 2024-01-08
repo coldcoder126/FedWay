@@ -50,11 +50,12 @@ def fed_distill(args, part_data):
             # client_models[k] = con_tool.net_avg([k],client_models,copy.deepcopy(model),[1])
 
             selected_params.append(tool.get_flat_params_from(global_model.parameters()))
-            selected_data_num.append(train_loaders[k].dataset.indices.size)
+            selected_data_num.append(train_loaders[k].sampler.num_samples)
 
         # 每轮训练结束后，将该轮选取的客户端模型聚合，得到最新的全局模型
-        global_param = tool.aggregate_avg(selected_params,selected_data_num)
-        tool.set_flat_params_to(model, global_param)
+        global_param = tool.aggregate_avg(selected_params, selected_data_num)
+        # tool.set_flat_params_to(model, global_param)
+        tool.set_flat_params_custom(model, global_param, 0.5)
         # 每一轮训练完，测试全局模型在全局测试集上的表现
         global_acc = tool.global_test(model, test_loader)
         print(f'FedDistill Round:{item} lr:{lr} clients:{idx_users} global_acc:{global_acc}%')
