@@ -233,6 +233,7 @@ class LocalTrain(object):
                 torch.nn.utils.clip_grad_norm_(student.parameters(), 1e5)
                 student_optimizer.step()
 
+
     def train_mas(self, net):
         optimizer = optimizer_mas(net.parameters(), reg_lambda=0.01, lr=self.lr, weight_decay=1e-3, momentum=0.9)
         net.train()

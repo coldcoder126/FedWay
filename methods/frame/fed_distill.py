@@ -43,12 +43,11 @@ def fed_distill(args, part_data):
         selected_params = []
         selected_data_num = []  #选中客户端的样本数量
         for k in idx_users:
-            global_model = copy.deepcopy(model)
             # 训练每个选到的客户端
             local = LocalTrain(args, train_loaders[k],  lr)
-            local.train_distill(client_models[k], global_model)
+            local.train_distill(client_models[k], model)
             # client_models[k] = con_tool.net_avg([k],client_models,copy.deepcopy(model),[1])
-
+            global_model = copy.deepcopy(client_models[k])
             selected_params.append(tool.get_flat_params_from(global_model.parameters()))
             selected_data_num.append(train_loaders[k].sampler.num_samples)
 
