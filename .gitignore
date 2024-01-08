@@ -10,5 +10,6 @@ test/
 data/
 saved_models/
 __pycache__/
+*.pyc
 # Dependency directories (remove the comment below to include it)
 # vendor/

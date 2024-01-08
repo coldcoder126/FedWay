@@ -200,6 +200,36 @@ class LocalTrain(object):
                 optimizer.step()
                 meme_optimizer.step()
 
+    def train_distill(self, student, teacher):
+        student_optimizer = torch.optim.SGD(student.parameters(), lr=self.lr, weight_decay=1e-3, momentum=0.9)
+
+        student.train()
+        student = student.to(device)
+        teacher.train()
+        teacher = teacher.to(device)
+
+        KL_Loss = nn.KLDivLoss(reduction='batchmean')
+        Softmax = nn.Softmax(dim=1)
+        LogSoftmax = nn.LogSoftmax(dim=1)
+        CE_Loss = nn.CrossEntropyLoss()
+        alpha = 0.9
+
+        for e in range(self.epoch):
+            # Training
+            for batch_idx, (inputs, labels) in enumerate(self.train_loader):
+                inputs, labels = inputs.to(device), labels.to(device)
+                student_optimizer.zero_grad()
+                output_local = student(inputs)
+                output_global = teacher(inputs)
+                # 蒸馏
+                ce_local = CE_Loss(output_local, labels)
+                # ce_meme = CE_Loss(output_global, labels)
+                kl_local = KL_Loss(LogSoftmax(output_local), Softmax(output_global.detach()))
+                loss = alpha * ce_local + (1 - alpha) * kl_local
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(student.parameters(), 1e5)
+                student_optimizer.step()
+
     def train_mas(self, net):
         optimizer = optimizer_mas(net.parameters(), reg_lambda=0.01, lr=self.lr, weight_decay=1e-3, momentum=0.9)
         net.train()

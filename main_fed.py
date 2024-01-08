@@ -6,7 +6,7 @@ import datetime
 
 import torchvision
 import torchvision.transforms as transforms
-from methods.frame import fedavg,fedavg2,fedavg3,fed_con, fedavg_mas, fed_mutual_aug_supcon, fed_mutual, fed_ring, fed_oneway, fed_mpl, fed_mutual_aug, fed_mutual_aug2, fed_mutual_fix, fed_prox, fed_mul_aug2_1, pre_train, fed_avg_aggr_greedy
+from methods.frame import fedavg,fed_distill,fedavg2,fedavg3,fed_con, fedavg_mas, fed_mutual_aug_supcon, fed_mutual, fed_ring, fed_oneway, fed_mpl, fed_mutual_aug, fed_mutual_aug2, fed_mutual_fix, fed_prox, fed_mul_aug2_1, pre_train, fed_avg_aggr_greedy
 from methods.tool import tool
 from utils import split
 
@@ -72,9 +72,10 @@ def run_fed():
 
     # train_set, test_set = tool.get_data_set(args,True)
     # pre_train.train_and_save(args,train_set,part_data)
-    fedavg_mas.fed_mas(args,part_data)
+    # fedavg_mas.fed_mas(args,part_data)
     # fed_avg_aggr_greedy.fed_avg_aggr_greedy(args,part_data)
-    # fedavg.fedavg(args,  part_data)
+    fed_distill.fed_distill(args, part_data)
+    fedavg.fedavg(args,  part_data)
     # fed_mutual.fed_mutual(args, train_set, test_set, part_data)
     # fed_prox.fedprox(args,train_set, test_set,part_data)
     # fed_mutual_aug.fed_mutual(args,test_set,part_data)
