@@ -56,6 +56,27 @@ class LocalTrain(object):
             epoch_loss.append(per_loss)
         return net, sum(epoch_loss) / len(epoch_loss)
 
+    def train_focal(self, net):
+        criterion = FocalLoss(gamma=2, reduction='mean')
+        optimizer = torch.optim.SGD(net.parameters(), lr=self.lr, weight_decay=1e-3, momentum=0.9)
+        net.train()
+        net = net.to(device)
+        epoch_loss = []
+        for epoch in range(self.epoch):
+            per_epoch_loss = []
+            for batch_idx, (inputs, labels) in enumerate(self.train_loader):
+                inputs, labels = inputs.to(device), labels.to(device)
+                optimizer.zero_grad()
+                prediction = net(inputs)
+                loss = criterion(prediction, labels)
+                per_epoch_loss.append(loss.item())
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(net.parameters(), 1e5)
+                optimizer.step()
+            per_loss = sum(per_epoch_loss) / len(per_epoch_loss)
+            epoch_loss.append(per_loss)
+        return net, sum(epoch_loss) / len(epoch_loss)
+
     # 用于fedavg2
     def train_aug(self, loader, loader_aug, net):
         optimizer = torch.optim.SGD(net.parameters(), lr=self.lr, weight_decay=1e-3, momentum=0.9)
@@ -1237,3 +1258,17 @@ class LocalDC(object):
             per_loss = sum(per_epoch_loss) / len(per_epoch_loss)
             epoch_loss.append(per_loss)
         return net.parameters(), sum(epoch_loss) / len(epoch_loss)
+
+class FocalLoss(nn.Module):
+    def __init__(self, weight=None, gamma=2., reduction='mean', ignore_index=-100):
+        super(FocalLoss, self).__init__()
+        self.weight = weight
+        self.gamma = gamma
+        self.reduction = reduction
+        self.ignore_index = ignore_index
+
+    def forward(self, input, target):
+        ce_loss = F.cross_entropy(input, target, reduction='none', weight=self.weight, ignore_index=self.ignore_index)
+        pt = torch.exp(-ce_loss)
+        focal_loss = ((1 - pt) ** self.gamma * ce_loss).mean() if self.reduction == 'mean' else ((1 - pt) ** self.gamma * ce_loss)
+        return focal_loss
